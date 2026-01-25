@@ -1,0 +1,33 @@
+# Python
+__pycache__/
+*.py[cod]
+*.egg-info/
+dist/
+build/
+*.egg
+
+# Virtual environments
+venv/
+.venv/
+env/
+
+# Output data
+*.json
+*.csv
+*.jsonl
+output/
+
+# IDE
+.vscode/
+.idea/
+
+# Claude Code
+.claude/
+
+# OS artifacts
+NUL
+Thumbs.db
+.DS_Store
+
+# Environment
+.env
