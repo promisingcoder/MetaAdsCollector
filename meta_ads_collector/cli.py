@@ -1,18 +1,19 @@
 #!/usr/bin/env python3
 """
-Meta Ads Library Collector - Main Entry Point
+Meta Ads Library Collector - CLI Entry Point
 
 Usage:
-    python main.py --query "real estate" --country US --max-results 100 --output ads.json
-    python main.py --query "climate" --ad-type political --output political_ads.csv
+    meta-ads-collector --query "real estate" --country US --max-results 100 --output ads.json
+    python -m meta_ads_collector --query "climate" --ad-type political --output political_ads.csv
 """
 
 import argparse
 import logging
+import os
 import sys
 from pathlib import Path
 
-from meta_ads_collector import MetaAdsCollector
+from . import MetaAdsCollector
 
 
 def setup_logging(verbose: bool = False) -> None:
@@ -33,16 +34,16 @@ def parse_args() -> argparse.Namespace:
         epilog="""
 Examples:
   # Search for real estate ads in the US
-  python main.py --query "real estate" --country US --output ads.json
+  meta-ads-collector --query "real estate" --country US --output ads.json
 
   # Collect political ads from Egypt
-  python main.py --country EG --ad-type political --output egypt_political.json
+  meta-ads-collector --country EG --ad-type political --output egypt_political.json
 
   # Export to CSV with a limit
-  python main.py --query "loans" --max-results 500 --output loans.csv
+  meta-ads-collector --query "loans" --max-results 500 --output loans.csv
 
   # Use exact phrase matching
-  python main.py --query "buy now" --search-type exact --output buy_now.json
+  meta-ads-collector --query "buy now" --search-type exact --output buy_now.json
         """,
     )
 
@@ -114,8 +115,8 @@ Examples:
     # Connection options
     parser.add_argument(
         "--proxy",
-        default="REDACTED_PROXY_CREDENTIALS",
-        help="Proxy in format host:port:user:pass (default: configured proxy)",
+        default=os.environ.get("META_ADS_PROXY"),
+        help="Proxy in format host:port:user:pass (or set META_ADS_PROXY env var)",
     )
     parser.add_argument(
         "--timeout",
@@ -180,7 +181,7 @@ def map_search_type(search_type: str) -> str:
 def map_sort(sort_by: str):
     """Map CLI sort to API constant."""
     mapping = {
-        "relevancy": MetaAdsCollector.SORT_RELEVANCY,  # None = server default
+        "relevancy": MetaAdsCollector.SORT_RELEVANCY,
         "impressions": MetaAdsCollector.SORT_IMPRESSIONS,
     }
     return mapping.get(sort_by, MetaAdsCollector.SORT_IMPRESSIONS)

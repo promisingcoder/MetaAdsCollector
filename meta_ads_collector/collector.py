@@ -15,6 +15,34 @@ from typing import Iterator, List, Optional, Dict, Any, Callable
 from datetime import datetime
 
 from .client import MetaAdsClient
+from .constants import (
+    AD_TYPE_ALL,
+    AD_TYPE_POLITICAL,
+    AD_TYPE_HOUSING,
+    AD_TYPE_EMPLOYMENT,
+    AD_TYPE_CREDIT,
+    STATUS_ACTIVE,
+    STATUS_INACTIVE,
+    STATUS_ALL,
+    SEARCH_KEYWORD,
+    SEARCH_EXACT,
+    SEARCH_UNORDERED,
+    SEARCH_PAGE,
+    SORT_RELEVANCY,
+    SORT_IMPRESSIONS,
+    VALID_AD_TYPES,
+    VALID_STATUSES,
+    VALID_SEARCH_TYPES,
+    VALID_SORT_MODES,
+    DEFAULT_RATE_LIMIT_DELAY,
+    DEFAULT_JITTER,
+    DEFAULT_TIMEOUT,
+    DEFAULT_MAX_RETRIES,
+    DEFAULT_PAGE_SIZE,
+    RATE_LIMIT_BACKOFF_BASE,
+    RATE_LIMIT_JITTER_RANGE,
+)
+from .exceptions import InvalidParameterError
 from .models import Ad, SearchResult
 
 logger = logging.getLogger(__name__)
@@ -28,39 +56,36 @@ class MetaAdsCollector:
     with automatic pagination, rate limiting, and multiple export formats.
     """
 
-    # Ad type constants
-    AD_TYPE_ALL = "ALL"
-    AD_TYPE_POLITICAL = "POLITICAL_AND_ISSUE_ADS"
-    AD_TYPE_HOUSING = "HOUSING_ADS"
-    AD_TYPE_EMPLOYMENT = "EMPLOYMENT_ADS"
-    AD_TYPE_CREDIT = "CREDIT_ADS"
+    # Ad type constants (aliases for convenience)
+    AD_TYPE_ALL = AD_TYPE_ALL
+    AD_TYPE_POLITICAL = AD_TYPE_POLITICAL
+    AD_TYPE_HOUSING = AD_TYPE_HOUSING
+    AD_TYPE_EMPLOYMENT = AD_TYPE_EMPLOYMENT
+    AD_TYPE_CREDIT = AD_TYPE_CREDIT
 
     # Status constants
-    STATUS_ACTIVE = "ACTIVE"
-    STATUS_INACTIVE = "INACTIVE"
-    STATUS_ALL = "ALL"
+    STATUS_ACTIVE = STATUS_ACTIVE
+    STATUS_INACTIVE = STATUS_INACTIVE
+    STATUS_ALL = STATUS_ALL
 
     # Search type constants
-    SEARCH_KEYWORD = "KEYWORD_EXACT_PHRASE"  # Default - more reliable
-    SEARCH_EXACT = "KEYWORD_EXACT_PHRASE"
-    SEARCH_UNORDERED = "KEYWORD_UNORDERED"
-    SEARCH_PAGE = "PAGE"
+    SEARCH_KEYWORD = SEARCH_KEYWORD
+    SEARCH_EXACT = SEARCH_EXACT
+    SEARCH_UNORDERED = SEARCH_UNORDERED
+    SEARCH_PAGE = SEARCH_PAGE
 
     # Sort constants
-    # Note: Only SORT_BY_TOTAL_IMPRESSIONS works as an explicit sortData mode.
-    # Omitting sortData (None) gives server-default sort (relevancy).
-    # Date sort is not available via the current GraphQL doc_id.
-    SORT_RELEVANCY = None  # Omit sortData for server-default relevancy
-    SORT_IMPRESSIONS = "SORT_BY_TOTAL_IMPRESSIONS"
+    SORT_RELEVANCY = SORT_RELEVANCY
+    SORT_IMPRESSIONS = SORT_IMPRESSIONS
     SORT_DATE = None  # Not supported; falls back to server-default
 
     def __init__(
         self,
         proxy: Optional[str] = None,
-        rate_limit_delay: float = 2.0,
-        jitter: float = 1.0,
-        timeout: int = 30,
-        max_retries: int = 3,
+        rate_limit_delay: float = DEFAULT_RATE_LIMIT_DELAY,
+        jitter: float = DEFAULT_JITTER,
+        timeout: int = DEFAULT_TIMEOUT,
+        max_retries: int = DEFAULT_MAX_RETRIES,
     ):
         """
         Initialize the collector.
@@ -95,6 +120,28 @@ class MetaAdsCollector:
         delay = self.rate_limit_delay + random.uniform(0, self.jitter)
         time.sleep(delay)
 
+    @staticmethod
+    def _validate_params(
+        ad_type: str,
+        status: str,
+        search_type: str,
+        sort_by: Optional[str],
+        country: str,
+    ) -> None:
+        """Validate public API parameters and raise on invalid values."""
+        if ad_type not in VALID_AD_TYPES:
+            raise InvalidParameterError("ad_type", ad_type, VALID_AD_TYPES)
+        if status not in VALID_STATUSES:
+            raise InvalidParameterError("status", status, VALID_STATUSES)
+        if search_type not in VALID_SEARCH_TYPES:
+            raise InvalidParameterError("search_type", search_type, VALID_SEARCH_TYPES)
+        if sort_by not in VALID_SORT_MODES:
+            raise InvalidParameterError("sort_by", sort_by, VALID_SORT_MODES)
+        if not country or len(country) != 2 or not country.isalpha():
+            raise InvalidParameterError(
+                "country", country, "a 2-letter ISO 3166-1 alpha-2 code (e.g. 'US', 'EG')"
+            )
+
     def search(
         self,
         query: str = "",
@@ -105,7 +152,7 @@ class MetaAdsCollector:
         page_ids: Optional[List[str]] = None,
         sort_by: Optional[str] = SORT_IMPRESSIONS,
         max_results: Optional[int] = None,
-        page_size: int = 10,
+        page_size: int = DEFAULT_PAGE_SIZE,
         progress_callback: Optional[Callable[[int, int], None]] = None,
     ) -> Iterator[Ad]:
         """
@@ -127,6 +174,9 @@ class MetaAdsCollector:
             Ad objects as they are collected
         """
         import uuid
+
+        country = country.upper()
+        self._validate_params(ad_type, status, search_type, sort_by, country)
 
         self.stats["start_time"] = datetime.utcnow()
         cursor = None

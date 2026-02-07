@@ -10,11 +10,33 @@ import json
 import time
 import random
 import string
-import hashlib
 import logging
 from typing import Dict, Any, Optional, Tuple
-from urllib.parse import urlencode, quote
+from urllib.parse import quote
+
 import requests
+
+from .constants import (
+    CHROME_VERSION,
+    CHROME_FULL_VERSION,
+    USER_AGENT,
+    DEFAULT_TIMEOUT,
+    DEFAULT_MAX_RETRIES,
+    DEFAULT_RETRY_DELAY,
+    MAX_SESSION_AGE,
+    DOC_ID_SEARCH,
+    DOC_ID_TYPEAHEAD,
+    FALLBACK_DYN,
+    FALLBACK_CSR,
+    FALLBACK_REV,
+)
+from .exceptions import (
+    AuthenticationError,
+    MetaAdsError,
+    ProxyError,
+    RateLimitError,
+    SessionExpiredError,
+)
 
 logger = logging.getLogger(__name__)
 
@@ -31,24 +53,14 @@ class MetaAdsClient:
     AD_LIBRARY_URL = "https://www.facebook.com/ads/library/"
     GRAPHQL_URL = "https://www.facebook.com/api/graphql/"
 
-    # GraphQL doc_ids (these may change with Facebook updates)
-    DOC_ID_SEARCH = "25464068859919530"  # AdLibrarySearchPaginationQuery
-    DOC_ID_TYPEAHEAD = "9755915494515334"  # useAdLibraryTypeaheadSuggestionDataSourceQuery
-
-    # Chrome version to use consistently across all headers
-    _CHROME_VERSION = "131"
-    _CHROME_FULL_VERSION = "131.0.6778.140"
-    _USER_AGENT = f"Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/{_CHROME_VERSION}.0.0.0 Safari/537.36"
-
-    # Default headers mimicking Chrome browser - needs to look like first visit
     DEFAULT_HEADERS = {
         "accept": "text/html,application/xhtml+xml,application/xml;q=0.9,image/avif,image/webp,image/apng,*/*;q=0.8,application/signed-exchange;v=b3;q=0.7",
         "accept-language": "en-US,en;q=0.9",
         "cache-control": "max-age=0",
         "dpr": "1.25",
         "sec-ch-prefers-color-scheme": "light",
-        "sec-ch-ua": f'"Google Chrome";v="{_CHROME_VERSION}", "Chromium";v="{_CHROME_VERSION}", "Not_A Brand";v="24"',
-        "sec-ch-ua-full-version-list": f'"Google Chrome";v="{_CHROME_FULL_VERSION}", "Chromium";v="{_CHROME_FULL_VERSION}", "Not_A Brand";v="24.0.0.0"',
+        "sec-ch-ua": f'"Google Chrome";v="{CHROME_VERSION}", "Chromium";v="{CHROME_VERSION}", "Not_A Brand";v="24"',
+        "sec-ch-ua-full-version-list": f'"Google Chrome";v="{CHROME_FULL_VERSION}", "Chromium";v="{CHROME_FULL_VERSION}", "Not_A Brand";v="24.0.0.0"',
         "sec-ch-ua-mobile": "?0",
         "sec-ch-ua-model": '""',
         "sec-ch-ua-platform": '"Windows"',
@@ -58,7 +70,7 @@ class MetaAdsClient:
         "sec-fetch-site": "none",
         "sec-fetch-user": "?1",
         "upgrade-insecure-requests": "1",
-        "user-agent": _USER_AGENT,
+        "user-agent": USER_AGENT,
         "viewport-width": "1920",
     }
 
@@ -68,23 +80,23 @@ class MetaAdsClient:
         "content-type": "application/x-www-form-urlencoded",
         "origin": "https://www.facebook.com",
         "sec-ch-prefers-color-scheme": "light",
-        "sec-ch-ua": f'"Google Chrome";v="{_CHROME_VERSION}", "Chromium";v="{_CHROME_VERSION}", "Not_A Brand";v="24"',
+        "sec-ch-ua": f'"Google Chrome";v="{CHROME_VERSION}", "Chromium";v="{CHROME_VERSION}", "Not_A Brand";v="24"',
         "sec-ch-ua-mobile": "?0",
         "sec-ch-ua-platform": '"Windows"',
         "sec-ch-ua-platform-version": '"15.0.0"',
         "sec-fetch-dest": "empty",
         "sec-fetch-mode": "cors",
         "sec-fetch-site": "same-origin",
-        "user-agent": _USER_AGENT,
+        "user-agent": USER_AGENT,
         "x-asbd-id": "359341",
     }
 
     def __init__(
         self,
         proxy: Optional[str] = None,
-        timeout: int = 30,
-        max_retries: int = 3,
-        retry_delay: float = 2.0,
+        timeout: int = DEFAULT_TIMEOUT,
+        max_retries: int = DEFAULT_MAX_RETRIES,
+        retry_delay: float = DEFAULT_RETRY_DELAY,
     ):
         """
         Initialize the Meta Ads client.
@@ -106,7 +118,7 @@ class MetaAdsClient:
         self._request_counter = 0
         self._init_time: Optional[float] = None
         self._consecutive_errors = 0
-        self._max_session_age = 1800  # Re-initialize after 30 minutes
+        self._max_session_age = MAX_SESSION_AGE
 
         # Configure proxy
         self._proxy_string = proxy
@@ -128,7 +140,7 @@ class MetaAdsClient:
             host, port = parts
             proxy_url = f"http://{host}:{port}"
         else:
-            raise ValueError(f"Invalid proxy format: {proxy}. Expected host:port or host:port:user:pass")
+            raise ProxyError(f"Invalid proxy format: {proxy!r}. Expected host:port or host:port:user:pass")
 
         self.session.proxies = {
             "http": proxy_url,
@@ -419,9 +431,10 @@ class MetaAdsClient:
 
             if response.status_code != 200:
                 logger.error(f"Failed to load Ad Library page: {response.status_code}")
-                # Log a snippet of the response for debugging
                 logger.debug(f"Response preview: {response.text[:500]}")
-                return False
+                raise AuthenticationError(
+                    f"Failed to load Ad Library page (HTTP {response.status_code})"
+                )
 
             # Extract tokens from HTML
             self._tokens = self._extract_tokens(response.text)
@@ -450,7 +463,7 @@ class MetaAdsClient:
                 if rev_match:
                     self._tokens["__rev"] = rev_match.group(1)
                 else:
-                    self._tokens["__rev"] = "1032373751"
+                    self._tokens["__rev"] = FALLBACK_REV
 
             self._initialized = True
             self._init_time = time.time()
@@ -463,11 +476,13 @@ class MetaAdsClient:
 
             return True
 
+        except AuthenticationError:
+            raise
         except Exception as e:
             logger.error(f"Failed to initialize client: {e}")
             import traceback
             logger.debug(traceback.format_exc())
-            return False
+            raise AuthenticationError(f"Failed to initialize client: {e}") from e
 
     def _make_request(
         self,
@@ -537,13 +552,13 @@ class MetaAdsClient:
                 lsd = self._tokens.get("lsd", "")
                 payload["lsd"] = lsd
                 payload["jazoest"] = self._calculate_jazoest(lsd)
-                payload["__rev"] = self._tokens.get("__rev", "1032373751")
-                payload["__spin_r"] = self._tokens.get("__spin_r", "1032373751")
+                payload["__rev"] = self._tokens.get("__rev", FALLBACK_REV)
+                payload["__spin_r"] = self._tokens.get("__spin_r", FALLBACK_REV)
                 payload["__spin_t"] = self._tokens.get("__spin_t", str(int(time.time())))
                 payload["__spin_b"] = self._tokens.get("__spin_b", "trunk")
                 payload["__hsi"] = self._tokens.get("__hsi", str(int(time.time() * 1000)))
-                payload["__dyn"] = self._tokens.get("__dyn", self.FALLBACK_DYN)
-                payload["__csr"] = self._tokens.get("__csr", self.FALLBACK_CSR)
+                payload["__dyn"] = self._tokens.get("__dyn", FALLBACK_DYN)
+                payload["__csr"] = self._tokens.get("__csr", FALLBACK_CSR)
                 if "__hsdp" in self._tokens:
                     payload["__hsdp"] = self._tokens["__hsdp"]
                 if "__hblp" in self._tokens:
@@ -556,10 +571,7 @@ class MetaAdsClient:
 
         return response
 
-    # Fallback values extracted from known working requests
-    # These are used when we can't extract fresh values from the page
-    FALLBACK_DYN = "7xeUmwlECdwn8K2Wmh0no6u5U4e1Fx-ewSAwHwNw9G2S2q0_EtxG4o0B-qbwgE1EEb87C1xwEwgo9oO0n24oaEd86a3a1YwBgao6C0Mo6i588Etw8WfK1LwPxe2GewbCXwJwmE2eUlwhE2Lw6OyES0gq0K-1LwqobU3Cwr86C1nwf6Eb87u1rwGwto461ww"
-    FALLBACK_CSR = "gjSxK8GXhkbjAmy4j8gBkiHG8FVCIJBHjpXUrByK5HxuquEyUK5Emz8Oaw9G3S5UoyUK588E4a2W0C8eEcE4S2m12wg8O1fwau1IwiEow9qE5S3KUK320g-1fDw49w2v80PS07XU0ptw2Ao05Ey02zC0aFw0hIQ00BPo06XK6k00CSo072W09xw4jw"
+    # Fallback values are imported from constants module
 
     def _calculate_jazoest(self, lsd: str) -> str:
         """Calculate jazoest value from lsd token."""
@@ -591,13 +603,13 @@ class MetaAdsClient:
             "__hs": self._tokens.get("__hs", "20476.HYP:comet_plat_default_pkg.2.1...0"),
             "dpr": "1",
             "__ccg": "GOOD",
-            "__rev": self._tokens.get("__rev", "1032373751"),
+            "__rev": self._tokens.get("__rev", FALLBACK_REV),
             "__s": self._generate_short_id(),
             "__hsi": self._tokens.get("__hsi", str(int(time.time() * 1000))),
             "__comet_req": self._tokens.get("__comet_req", "94"),
             "lsd": lsd,
             "jazoest": jazoest,
-            "__spin_r": self._tokens.get("__spin_r", "1032373751"),
+            "__spin_r": self._tokens.get("__spin_r", FALLBACK_REV),
             "__spin_b": self._tokens.get("__spin_b", "trunk"),
             "__spin_t": self._tokens.get("__spin_t", str(int(time.time()))),
             "__jssesw": "1",
@@ -610,8 +622,8 @@ class MetaAdsClient:
 
         # Add all extracted tokens - these are important for avoiding rate limits
         # Use fallback values if not extracted
-        payload["__dyn"] = self._tokens.get("__dyn", self.FALLBACK_DYN)
-        payload["__csr"] = self._tokens.get("__csr", self.FALLBACK_CSR)
+        payload["__dyn"] = self._tokens.get("__dyn", FALLBACK_DYN)
+        payload["__csr"] = self._tokens.get("__csr", FALLBACK_CSR)
 
         if "__hsdp" in self._tokens:
             payload["__hsdp"] = self._tokens["__hsdp"]
@@ -681,14 +693,13 @@ class MetaAdsClient:
             Tuple of (response data dict, next cursor or None)
         """
         if not self._initialized:
-            if not self.initialize():
-                raise RuntimeError("Failed to initialize client")
+            self.initialize()
 
         # Proactively refresh stale sessions
         if self._is_session_stale():
             logger.info("Session is stale, refreshing before request...")
             if not self._refresh_session():
-                raise RuntimeError("Failed to refresh stale session")
+                raise SessionExpiredError("Failed to refresh stale session")
 
         # Use provided IDs or generate new ones
         session_id = session_id or self._generate_session_id()
@@ -739,7 +750,7 @@ class MetaAdsClient:
 
         # Build payload for search/pagination query
         payload = self._build_graphql_payload(
-            doc_id=self.DOC_ID_SEARCH,
+            doc_id=DOC_ID_SEARCH,
             variables=variables,
             friendly_name="AdLibrarySearchPaginationQuery",
         )
@@ -764,7 +775,7 @@ class MetaAdsClient:
         if response.status_code != 200:
             logger.error(f"GraphQL request failed: {response.status_code}")
             logger.debug(f"Response: {response.text[:500]}")
-            raise Exception(f"GraphQL request failed with status {response.status_code}")
+            raise MetaAdsError(f"GraphQL request failed with status {response.status_code}")
 
         # Parse response
         try:

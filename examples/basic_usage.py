@@ -6,6 +6,7 @@ This script demonstrates various ways to use the collector.
 """
 
 import logging
+import os
 from meta_ads_collector import MetaAdsCollector, Ad
 
 # Configure logging
@@ -14,8 +15,8 @@ logging.basicConfig(
     format="%(asctime)s - %(levelname)s - %(message)s"
 )
 
-# Your proxy configuration
-PROXY = "REDACTED_PROXY_CREDENTIALS"
+# Load proxy from environment variable (set META_ADS_PROXY in your .env)
+PROXY = os.environ.get("META_ADS_PROXY")
 
 
 def example_basic_search():
