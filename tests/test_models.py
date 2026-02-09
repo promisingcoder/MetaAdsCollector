@@ -3,18 +3,14 @@
 import json
 from datetime import datetime
 
-import pytest
-
 from meta_ads_collector.models import (
     Ad,
     AdCreative,
-    AudienceDistribution,
     ImpressionRange,
     PageInfo,
     SearchResult,
     SpendRange,
 )
-
 
 # ---------------------------------------------------------------------------
 # SpendRange / ImpressionRange

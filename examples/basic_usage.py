@@ -7,7 +7,8 @@ This script demonstrates various ways to use the collector.
 
 import logging
 import os
-from meta_ads_collector import MetaAdsCollector, Ad
+
+from meta_ads_collector import MetaAdsCollector
 
 # Configure logging
 logging.basicConfig(

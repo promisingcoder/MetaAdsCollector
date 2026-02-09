@@ -5,17 +5,33 @@ build-backend = "setuptools.build_meta"
 [project]
 name = "meta-ads-collector"
 version = "1.0.0"
-description = "Collect ads from the Meta (Facebook) Ad Library"
+description = "Collect ads from the Meta (Facebook) Ad Library -- no API key required"
 readme = "README.md"
 license = "MIT"
 requires-python = ">=3.9"
 authors = [
     { name = "Yossef" },
 ]
+keywords = [
+    "facebook ads",
+    "meta ads",
+    "ad library",
+    "scraper",
+    "competitive intelligence",
+    "ad research",
+    "facebook scraper",
+    "meta ad library",
+    "ad transparency",
+    "facebook ad library",
+    "ad collector",
+    "graphql",
+]
 classifiers = [
-    "Development Status :: 4 - Beta",
+    "Development Status :: 5 - Production/Stable",
     "Intended Audience :: Developers",
     "Intended Audience :: Science/Research",
+    "License :: OSI Approved :: MIT License",
+    "Operating System :: OS Independent",
     "Programming Language :: Python :: 3",
     "Programming Language :: Python :: 3.9",
     "Programming Language :: Python :: 3.10",
@@ -23,6 +39,7 @@ classifiers = [
     "Programming Language :: Python :: 3.12",
     "Programming Language :: Python :: 3.13",
     "Topic :: Internet :: WWW/HTTP :: Indexing/Search",
+    "Topic :: Software Development :: Libraries :: Python Modules",
     "Typing :: Typed",
 ]
 dependencies = [
@@ -30,9 +47,13 @@ dependencies = [
 ]
 
 [project.optional-dependencies]
+async = [
+    "httpx>=0.24.0",
+]
 dev = [
     "pytest>=7.0",
     "pytest-cov>=4.0",
+    "pytest-asyncio>=0.21",
     "ruff>=0.4",
     "mypy>=1.0",
     "types-requests",
@@ -45,6 +66,8 @@ meta-ads-collector = "meta_ads_collector.cli:main"
 Homepage = "https://github.com/Yossef/meta-ads-collector"
 Repository = "https://github.com/Yossef/meta-ads-collector"
 Issues = "https://github.com/Yossef/meta-ads-collector/issues"
+Documentation = "https://github.com/Yossef/meta-ads-collector/tree/main/docs"
+Changelog = "https://github.com/Yossef/meta-ads-collector/blob/main/CHANGELOG.md"
 
 [tool.setuptools.packages.find]
 include = ["meta_ads_collector*"]
@@ -52,6 +75,10 @@ include = ["meta_ads_collector*"]
 [tool.pytest.ini_options]
 testpaths = ["tests"]
 addopts = "-v --tb=short"
+asyncio_mode = "auto"
+markers = [
+    "integration: tests that hit real Meta API servers (deselected by default)",
+]
 
 [tool.ruff]
 target-version = "py39"

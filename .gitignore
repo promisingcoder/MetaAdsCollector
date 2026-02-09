@@ -1,25 +1,40 @@
 # Python
 __pycache__/
 *.py[cod]
+*$py.class
+*.so
 *.egg-info/
+*.egg
 dist/
 build/
-*.egg
+sdist/
+wheels/
 
 # Virtual environments
 venv/
 .venv/
 env/
+.env/
 
-# Output data
-*.json
-*.csv
-*.jsonl
-output/
+# Testing
+.pytest_cache/
+.coverage
+htmlcov/
+coverage.xml
+*.cover
+
+# Type checking
+.mypy_cache/
+
+# Linting
+.ruff_cache/
 
 # IDE
 .vscode/
 .idea/
+*.swp
+*.swo
+*~
 
 # Claude Code
 .claude/
@@ -28,6 +43,25 @@ output/
 NUL
 Thumbs.db
 .DS_Store
+Desktop.ini
 
-# Environment
+# Environment files
 .env
+.env.local
+.env.*.local
+
+# Output data
+*.json
+!.github/**/*.json
+*.csv
+*.jsonl
+output/
+ad_media/
+
+# SQLite state files
+*.db
+*.sqlite
+*.sqlite3
+
+# Log files
+*.log

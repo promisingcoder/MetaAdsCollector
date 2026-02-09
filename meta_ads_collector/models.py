@@ -1,9 +1,9 @@
 """Data models for Meta Ads Library"""
 
-from dataclasses import dataclass, field, asdict
-from typing import Optional, List, Dict, Any
-from datetime import datetime
 import json
+from dataclasses import asdict, dataclass, field
+from datetime import datetime, timezone
+from typing import Any, Optional
 
 
 @dataclass
@@ -14,7 +14,7 @@ class SpendRange:
     currency: Optional[str] = None
 
     def __str__(self) -> str:
-        if self.lower_bound and self.upper_bound:
+        if self.lower_bound is not None and self.upper_bound is not None:
             return f"{self.currency} {self.lower_bound:,} - {self.upper_bound:,}"
         return "N/A"
 
@@ -26,7 +26,7 @@ class ImpressionRange:
     upper_bound: Optional[int] = None
 
     def __str__(self) -> str:
-        if self.lower_bound and self.upper_bound:
+        if self.lower_bound is not None and self.upper_bound is not None:
             return f"{self.lower_bound:,} - {self.upper_bound:,}"
         return "N/A"
 
@@ -37,7 +37,7 @@ class AudienceDistribution:
     category: str
     percentage: float
 
-    def to_dict(self) -> Dict[str, Any]:
+    def to_dict(self) -> dict[str, Any]:
         return asdict(self)
 
 
@@ -57,7 +57,7 @@ class AdCreative:
     cta_text: Optional[str] = None
     cta_type: Optional[str] = None
 
-    def to_dict(self) -> Dict[str, Any]:
+    def to_dict(self) -> dict[str, Any]:
         return {k: v for k, v in asdict(self).items() if v is not None}
 
 
@@ -71,7 +71,28 @@ class PageInfo:
     likes: Optional[int] = None
     verified: bool = False
 
-    def to_dict(self) -> Dict[str, Any]:
+    def to_dict(self) -> dict[str, Any]:
+        return asdict(self)
+
+
+@dataclass
+class PageSearchResult:
+    """Result from a typeahead page search in the Ad Library.
+
+    Returned by the typeahead endpoint when searching for pages by name.
+    Contains page identification data needed to collect ads for a specific page.
+    """
+    page_id: str
+    page_name: str
+    page_profile_uri: Optional[str] = None
+    page_alias: Optional[str] = None
+    page_logo_url: Optional[str] = None
+    page_verified: Optional[bool] = None
+    page_like_count: Optional[int] = None
+    category: Optional[str] = None
+
+    def to_dict(self) -> dict[str, Any]:
+        """Convert to dictionary."""
         return asdict(self)
 
 
@@ -80,13 +101,13 @@ class TargetingInfo:
     """Ad targeting information"""
     age_min: Optional[int] = None
     age_max: Optional[int] = None
-    genders: List[str] = field(default_factory=list)
-    locations: List[str] = field(default_factory=list)
-    location_types: List[str] = field(default_factory=list)
-    interests: List[str] = field(default_factory=list)
-    excluded_locations: List[str] = field(default_factory=list)
+    genders: list[str] = field(default_factory=list)
+    locations: list[str] = field(default_factory=list)
+    location_types: list[str] = field(default_factory=list)
+    interests: list[str] = field(default_factory=list)
+    excluded_locations: list[str] = field(default_factory=list)
 
-    def to_dict(self) -> Dict[str, Any]:
+    def to_dict(self) -> dict[str, Any]:
         return asdict(self)
 
 
@@ -113,7 +134,7 @@ class Ad:
     delivery_stop_time: Optional[datetime] = None
 
     # Creative content (can have multiple variations)
-    creatives: List[AdCreative] = field(default_factory=list)
+    creatives: list[AdCreative] = field(default_factory=list)
 
     # Snapshot and preview
     snapshot_url: Optional[str] = None
@@ -126,8 +147,8 @@ class Ad:
     currency: Optional[str] = None
 
     # Audience demographics
-    age_gender_distribution: List[AudienceDistribution] = field(default_factory=list)
-    region_distribution: List[AudienceDistribution] = field(default_factory=list)
+    age_gender_distribution: list[AudienceDistribution] = field(default_factory=list)
+    region_distribution: list[AudienceDistribution] = field(default_factory=list)
 
     # Targeting
     targeting: Optional[TargetingInfo] = None
@@ -135,35 +156,35 @@ class Ad:
     estimated_audience_size_upper: Optional[int] = None
 
     # Platform and placement
-    publisher_platforms: List[str] = field(default_factory=list)  # facebook, instagram, messenger, audience_network
+    publisher_platforms: list[str] = field(default_factory=list)  # facebook, instagram, messenger, audience_network
 
     # Languages
-    languages: List[str] = field(default_factory=list)
+    languages: list[str] = field(default_factory=list)
 
     # Political/Issue ad specific fields
-    bylines: List[str] = field(default_factory=list)
+    bylines: list[str] = field(default_factory=list)
     funding_entity: Optional[str] = None
     disclaimer: Optional[str] = None
 
     # Categories
     ad_type: Optional[str] = None  # POLITICAL_AND_ISSUE_ADS, HOUSING_ADS, etc.
-    categories: List[str] = field(default_factory=list)
+    categories: list[str] = field(default_factory=list)
 
     # EU transparency fields
-    beneficiary_payers: List[str] = field(default_factory=list)
+    beneficiary_payers: list[str] = field(default_factory=list)
 
     # Metadata
     collation_id: Optional[str] = None
     collation_count: Optional[int] = None
 
     # Raw data for debugging/extensibility
-    raw_data: Optional[Dict[str, Any]] = field(default=None, repr=False)
+    raw_data: Optional[dict[str, Any]] = field(default=None, repr=False)
 
     # Collection metadata
-    collected_at: datetime = field(default_factory=datetime.utcnow)
+    collected_at: datetime = field(default_factory=lambda: datetime.now(timezone.utc))
     collection_source: str = "meta_ads_library"
 
-    def to_dict(self, include_raw: bool = False) -> Dict[str, Any]:
+    def to_dict(self, include_raw: bool = False) -> dict[str, Any]:
         """Convert to dictionary for JSON serialization"""
         result = {
             "id": self.id,
@@ -221,22 +242,57 @@ class Ad:
         return json.dumps(self.to_dict(include_raw=include_raw), indent=indent, ensure_ascii=False)
 
     @classmethod
-    def from_graphql_response(cls, data: Dict[str, Any]) -> "Ad":
+    def _extract_body_text(cls, body_value: Any) -> Optional[str]:
+        """Extract body text from API response body field.
+
+        The body can be either a plain string or a dict ``{"text": "..."}``
+        depending on the API response format.
+
+        Args:
+            body_value: The raw ``body`` value from the response.
+
+        Returns:
+            The body text string, or ``None`` if not available.
+        """
+        if body_value is None:
+            return None
+        if isinstance(body_value, dict):
+            return body_value.get("text")
+        if isinstance(body_value, str):
+            return body_value
+        return None
+
+    @classmethod
+    def from_graphql_response(cls, data: dict[str, Any]) -> "Ad":
         """
         Parse an ad from the Meta Ad Library GraphQL response.
-        Handles the flattened structure from AdLibrarySearchPaginationQuery.
+
+        Handles multiple response formats:
+
+        1. **Live API format** (primary): Flat top-level fields with
+           ``body`` as ``{"text": "..."}`` dict, ``videos[]``,
+           ``images[]``, and ``cards`` usually empty.
+        2. **Cards format**: ``cards[]`` array containing creative
+           content (carousel ads or older responses).
+        3. **Legacy format**: ``ad_creative_bodies``,
+           ``ad_creative_link_titles``, etc. arrays with optional
+           ``snapshot.cards`` for media.
         """
-        # Extract page info - can be in nested page object or flat fields
+        # ── Extract page info ───────────────────────────────────────
+        # Can be in a nested ``page`` object or flat fields at top level
         page_data = data.get("page") or data.get("pageInfo") or {}
         if page_data:
             page = PageInfo(
                 id=page_data.get("id", ""),
                 name=page_data.get("name", ""),
-                profile_picture_url=page_data.get("profile_picture", {}).get("uri") if page_data.get("profile_picture") else None,
+                profile_picture_url=(
+                    page_data.get("profile_picture", {}).get("uri")
+                    if page_data.get("profile_picture") else None
+                ),
                 page_url=page_data.get("url"),
             )
         else:
-            # Flat structure from search results
+            # Flat structure from live API search results
             page = PageInfo(
                 id=data.get("page_id", ""),
                 name=data.get("page_name", ""),
@@ -245,15 +301,18 @@ class Ad:
                 likes=data.get("page_like_count"),
             )
 
-        # Parse creatives from cards array
-        creatives = []
+        # Map page_categories to the Ad categories field when present
+        page_categories = data.get("page_categories") or []
+
+        # ── Parse creatives ─────────────────────────────────────────
+        creatives: list[AdCreative] = []
         cards = data.get("cards") or []
 
         if cards:
-            # New format: cards array contains creative content
+            # Cards format: cards array contains creative content
             for card in cards:
                 creative = AdCreative(
-                    body=card.get("body"),
+                    body=cls._extract_body_text(card.get("body")),
                     caption=card.get("caption") or data.get("caption"),
                     description=card.get("link_description"),
                     title=card.get("title"),
@@ -268,36 +327,93 @@ class Ad:
                 )
                 creatives.append(creative)
         else:
-            # Fallback to old format
-            bodies = data.get("ad_creative_bodies") or data.get("adCreativeBodies") or []
-            link_captions = data.get("ad_creative_link_captions") or data.get("adCreativeLinkCaptions") or []
-            link_descriptions = data.get("ad_creative_link_descriptions") or data.get("adCreativeLinkDescriptions") or []
-            link_titles = data.get("ad_creative_link_titles") or data.get("adCreativeLinkTitles") or []
+            # ── Primary path: live API flat format ──────────────────
+            # The live API returns body, title, caption, link_url,
+            # videos[], images[] as flat top-level fields.
+            has_flat_fields = (
+                data.get("body") is not None
+                or data.get("title") is not None
+                or data.get("videos") is not None
+                or data.get("images") is not None
+            )
 
-            max_creatives = max(len(bodies), len(link_titles), 1)
-            for i in range(max_creatives):
+            if has_flat_fields:
+                # Extract media from top-level arrays
+                videos = data.get("videos") or []
+                images = data.get("images") or []
+                first_video = videos[0] if videos else {}
+                first_image = images[0] if images else {}
+
+                video_hd = first_video.get("video_hd_url")
+                video_sd = first_video.get("video_sd_url")
+                video_url = video_hd or video_sd
+                thumbnail = first_video.get("video_preview_image_url")
+                image_url = (
+                    first_image.get("original_image_url")
+                    or first_image.get("resized_image_url")
+                )
+
                 creative = AdCreative(
-                    body=bodies[i] if i < len(bodies) else None,
-                    caption=link_captions[i] if i < len(link_captions) else None,
-                    description=link_descriptions[i] if i < len(link_descriptions) else None,
-                    title=link_titles[i] if i < len(link_titles) else None,
+                    body=cls._extract_body_text(data.get("body")),
+                    caption=data.get("caption"),
+                    description=data.get("link_description"),
+                    title=data.get("title"),
+                    link_url=data.get("link_url"),
+                    image_url=image_url,
+                    video_url=video_url,
+                    video_hd_url=video_hd,
+                    video_sd_url=video_sd,
+                    thumbnail_url=thumbnail,
+                    cta_text=data.get("cta_text"),
+                    cta_type=data.get("cta_type"),
                 )
                 creatives.append(creative)
+            else:
+                # ── Legacy fallback: ad_creative_bodies arrays ──────
+                bodies = data.get("ad_creative_bodies") or data.get("adCreativeBodies") or []
+                link_captions = (
+                    data.get("ad_creative_link_captions")
+                    or data.get("adCreativeLinkCaptions") or []
+                )
+                link_descriptions = (
+                    data.get("ad_creative_link_descriptions")
+                    or data.get("adCreativeLinkDescriptions") or []
+                )
+                link_titles = (
+                    data.get("ad_creative_link_titles")
+                    or data.get("adCreativeLinkTitles") or []
+                )
 
-            # Parse snapshot/display images for old format
-            snapshot = data.get("snapshot") or {}
-            if snapshot:
-                for i, creative in enumerate(creatives):
-                    snap_cards = snapshot.get("cards") or []
-                    if i < len(snap_cards):
-                        card = snap_cards[i]
-                        creative.image_url = card.get("resized_image_url") or card.get("original_image_url")
-                        creative.video_url = card.get("video_hd_url") or card.get("video_sd_url")
-                        creative.video_hd_url = card.get("video_hd_url")
-                        creative.video_sd_url = card.get("video_sd_url")
-                        creative.link_url = card.get("link_url")
-                        creative.cta_text = card.get("cta_text")
-                        creative.cta_type = card.get("cta_type")
+                max_creatives = max(len(bodies), len(link_titles), 1)
+                for i in range(max_creatives):
+                    creative = AdCreative(
+                        body=bodies[i] if i < len(bodies) else None,
+                        caption=link_captions[i] if i < len(link_captions) else None,
+                        description=link_descriptions[i] if i < len(link_descriptions) else None,
+                        title=link_titles[i] if i < len(link_titles) else None,
+                    )
+                    creatives.append(creative)
+
+                # Parse snapshot/display images for legacy format
+                snapshot = data.get("snapshot") or {}
+                if snapshot:
+                    for i, creative in enumerate(creatives):
+                        snap_cards = snapshot.get("cards") or []
+                        if i < len(snap_cards):
+                            card = snap_cards[i]
+                            creative.image_url = (
+                                card.get("resized_image_url")
+                                or card.get("original_image_url")
+                            )
+                            creative.video_url = (
+                                card.get("video_hd_url")
+                                or card.get("video_sd_url")
+                            )
+                            creative.video_hd_url = card.get("video_hd_url")
+                            creative.video_sd_url = card.get("video_sd_url")
+                            creative.link_url = card.get("link_url")
+                            creative.cta_text = card.get("cta_text")
+                            creative.cta_type = card.get("cta_type")
 
         # Parse dates
         delivery_start = None
@@ -388,15 +504,21 @@ class Ad:
             currency=data.get("currency"),
             age_gender_distribution=age_gender_dist,
             region_distribution=region_dist,
-            estimated_audience_size_lower=data.get("estimated_audience_size", {}).get("lower_bound") if data.get("estimated_audience_size") else None,
-            estimated_audience_size_upper=data.get("estimated_audience_size", {}).get("upper_bound") if data.get("estimated_audience_size") else None,
+            estimated_audience_size_lower=(
+                data.get("estimated_audience_size", {}).get("lower_bound")
+                if data.get("estimated_audience_size") else None
+            ),
+            estimated_audience_size_upper=(
+                data.get("estimated_audience_size", {}).get("upper_bound")
+                if data.get("estimated_audience_size") else None
+            ),
             publisher_platforms=platforms,
             languages=data.get("languages") or [],
             bylines=data.get("bylines") or [],
             funding_entity=data.get("funding_entity") or data.get("fundingEntity"),
             disclaimer=data.get("disclaimer"),
             ad_type=data.get("ad_type") or data.get("adType"),
-            categories=data.get("categories") or [],
+            categories=data.get("categories") or page_categories,
             beneficiary_payers=data.get("beneficiary_payers") or data.get("beneficiaryPayers") or [],
             collation_id=data.get("collation_id") or data.get("collationID"),
             collation_count=data.get("collation_count") or data.get("collationCount"),
@@ -407,13 +529,13 @@ class Ad:
 @dataclass
 class SearchResult:
     """Represents a paginated search result from the Ad Library"""
-    ads: List[Ad]
+    ads: list[Ad]
     total_count: Optional[int] = None
     has_next_page: bool = False
     end_cursor: Optional[str] = None
     search_id: Optional[str] = None
 
-    def to_dict(self) -> Dict[str, Any]:
+    def to_dict(self) -> dict[str, Any]:
         return {
             "ads": [ad.to_dict() for ad in self.ads],
             "total_count": self.total_count,

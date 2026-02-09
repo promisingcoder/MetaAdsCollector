@@ -37,6 +37,15 @@ DEFAULT_PAGE_SIZE = 10  # results per API request (max ~30)
 
 # ---------------------------------------------------------------------------
 # GraphQL document IDs (may change with Facebook updates)
+#
+# These are hardcoded fallbacks.  The client attempts to extract fresh
+# doc_ids from the Ad Library page HTML on each session init.  If
+# dynamic extraction fails, these values are used instead.
+#
+# Last verified working: 2025-02-08
+# If requests suddenly return errors about unknown doc_ids, these
+# values likely need updating.  Run the library with DEBUG logging
+# to see whether dynamic extraction is succeeding.
 # ---------------------------------------------------------------------------
 DOC_ID_SEARCH = "25464068859919530"  # AdLibrarySearchPaginationQuery
 DOC_ID_TYPEAHEAD = "9755915494515334"  # useAdLibraryTypeaheadSuggestionDataSourceQuery
@@ -86,13 +95,14 @@ VALID_STATUSES = frozenset({STATUS_ACTIVE, STATUS_INACTIVE, STATUS_ALL})
 # ---------------------------------------------------------------------------
 # Search type constants
 # ---------------------------------------------------------------------------
-SEARCH_KEYWORD = "KEYWORD_EXACT_PHRASE"
+SEARCH_KEYWORD = "KEYWORD_UNORDERED"
 SEARCH_EXACT = "KEYWORD_EXACT_PHRASE"
 SEARCH_UNORDERED = "KEYWORD_UNORDERED"
 SEARCH_PAGE = "PAGE"
 
 VALID_SEARCH_TYPES = frozenset({
     SEARCH_KEYWORD,
+    SEARCH_EXACT,
     SEARCH_UNORDERED,
     SEARCH_PAGE,
 })

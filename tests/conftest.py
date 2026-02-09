@@ -1,4 +1,21 @@
-"""Shared test fixtures for meta_ads_collector tests."""
+"""Shared test fixtures for meta_ads_collector tests.
+
+Provides both unit-test fixtures (sample data, mock objects) and
+integration-test fixtures (real client, real collected ads).
+
+Integration tests are gated by either:
+  - The ``--run-integration`` pytest flag, or
+  - The ``RUN_INTEGRATION_TESTS=1`` environment variable.
+
+When neither is set, tests marked with ``@pytest.mark.integration``
+are automatically skipped.
+"""
+
+from __future__ import annotations
+
+import logging
+import os
+from typing import Any
 
 import pytest
 
@@ -11,9 +28,104 @@ from meta_ads_collector.models import (
     SpendRange,
 )
 
+logger = logging.getLogger(__name__)
+
+
+# ---------------------------------------------------------------------------
+# Integration test gating
+# ---------------------------------------------------------------------------
+
+def pytest_addoption(parser: Any) -> None:
+    """Register the ``--run-integration`` CLI flag."""
+    parser.addoption(
+        "--run-integration",
+        action="store_true",
+        default=False,
+        help="Run integration tests that hit real Meta API servers.",
+    )
+
+
+def pytest_collection_modifyitems(config: Any, items: list[Any]) -> None:
+    """Auto-skip tests marked ``@pytest.mark.integration`` unless opted in."""
+    run_flag = config.getoption("--run-integration", default=False)
+    env_flag = os.environ.get("RUN_INTEGRATION_TESTS", "0") == "1"
+
+    if run_flag or env_flag:
+        # Integration tests enabled -- do not skip
+        return
+
+    skip_marker = pytest.mark.skip(
+        reason=(
+            "Integration tests require --run-integration flag or "
+            "RUN_INTEGRATION_TESTS=1 environment variable."
+        )
+    )
+    for item in items:
+        if "integration" in item.keywords:
+            item.add_marker(skip_marker)
+
+
+# ---------------------------------------------------------------------------
+# Session-scoped integration fixtures
+# ---------------------------------------------------------------------------
+
+@pytest.fixture(scope="session")
+def real_client():
+    """Session-scoped fixture: a real MetaAdsClient initialized once.
+
+    Only created when integration tests are enabled.  Shared across all
+    integration tests in the session to minimize API calls.
+    """
+    from meta_ads_collector.client import MetaAdsClient
+
+    client = MetaAdsClient(timeout=45, max_retries=3)
+    client.initialize()
+    yield client
+    client.close()
+
+
+@pytest.fixture(scope="session")
+def collected_ads() -> list[Ad]:
+    """Session-scoped fixture: 10-20 real ads from a 'coca cola' search.
+
+    Collected once per test session and shared across all tests that
+    need real Ad objects (export tests, stats tests, etc.).  This
+    avoids redundant API calls.
+    """
+    from meta_ads_collector.collector import MetaAdsCollector
+
+    collector = MetaAdsCollector(rate_limit_delay=1.0, jitter=0.5, timeout=45)
+    ads: list[Ad] = []
+    try:
+        for ad in collector.search(
+            query="coca cola",
+            country="US",
+            max_results=15,
+            page_size=10,
+        ):
+            ads.append(ad)
+            if len(ads) >= 15:
+                break
+    except Exception as exc:
+        logger.warning("Failed to collect ads for session fixture: %s", exc)
+    finally:
+        collector.close()
+
+    if not ads:
+        pytest.skip(
+            "Could not collect any ads from Meta API. "
+            "Network may be unavailable or API may have changed."
+        )
+
+    return ads
+
+
+# ---------------------------------------------------------------------------
+# Unit test fixtures (no network required)
+# ---------------------------------------------------------------------------
 
 @pytest.fixture
-def sample_graphql_ad_data():
+def sample_graphql_ad_data() -> dict[str, Any]:
     """Minimal GraphQL ad response data matching the flattened structure."""
     return {
         "ad_archive_id": "12345",
@@ -55,7 +167,7 @@ def sample_graphql_ad_data():
 
 
 @pytest.fixture
-def sample_ad():
+def sample_ad() -> Ad:
     """A fully populated Ad object for testing serialization."""
     return Ad(
         id="12345",

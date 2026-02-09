@@ -79,7 +79,7 @@ class TestCollectorConstants:
         assert MetaAdsCollector.STATUS_INACTIVE == "INACTIVE"
 
     def test_search_type_constants(self):
-        assert MetaAdsCollector.SEARCH_KEYWORD == "KEYWORD_EXACT_PHRASE"
+        assert MetaAdsCollector.SEARCH_KEYWORD == "KEYWORD_UNORDERED"
         assert MetaAdsCollector.SEARCH_PAGE == "PAGE"
 
     def test_sort_constants(self):
