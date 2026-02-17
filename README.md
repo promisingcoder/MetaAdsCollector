@@ -2,8 +2,8 @@
 
 [![PyPI version](https://img.shields.io/pypi/v/meta-ads-collector)](https://pypi.org/project/meta-ads-collector/)
 [![Python versions](https://img.shields.io/pypi/pyversions/meta-ads-collector)](https://pypi.org/project/meta-ads-collector/)
-[![CI](https://img.shields.io/github/actions/workflow/status/Yossef/meta-ads-collector/ci.yml?branch=main&label=tests)](https://github.com/Yossef/meta-ads-collector/actions)
-[![License: MIT](https://img.shields.io/badge/license-MIT-blue.svg)](https://github.com/Yossef/meta-ads-collector/blob/main/LICENSE)
+[![CI](https://img.shields.io/github/actions/workflow/status/promisingcoder/MetaAdsCollector/ci.yml?branch=main&label=tests)](https://github.com/promisingcoder/MetaAdsCollector/actions)
+[![License: MIT](https://img.shields.io/badge/license-MIT-blue.svg)](https://github.com/promisingcoder/MetaAdsCollector/blob/main/LICENSE)
 
 **No API key required.** Collect ads from the [Meta Ad Library](https://www.facebook.com/ads/library/) using Python. No developer account, no identity verification, no rate-limited official API. Just install and search.
 
@@ -58,7 +58,7 @@ pip install meta-ads-collector[async]
 From source:
 
 ```bash
-git clone https://github.com/Yossef/meta-ads-collector.git
+git clone https://github.com/promisingcoder/MetaAdsCollector.git
 cd meta-ads-collector
 pip install -e ".[dev]"
 ```
