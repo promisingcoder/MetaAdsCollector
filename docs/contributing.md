@@ -36,8 +36,8 @@ make install-dev
 | Group | What it includes | When to install |
 |---|---|---|
 | (none) | `requests>=2.28.0` | Always (core dependency) |
-| `async` | `httpx>=0.24.0` | When working on async modules |
-| `stealth` | `curl_cffi>=0.7.0` | For TLS fingerprint impersonation (recommended) |
+| `async` | `httpx>=0.24.0` | Async fallback when curl_cffi is unavailable |
+| `stealth` | `curl_cffi>=0.7.0` | TLS fingerprint impersonation for sync and async clients (recommended) |
 | `dev` | `pytest`, `pytest-cov`, `pytest-asyncio`, `ruff`, `mypy`, `types-requests` | Always for development |
 
 ## Running Tests

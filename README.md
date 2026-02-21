@@ -79,7 +79,7 @@ pip install -e ".[dev,async,stealth]"
 - **Media Downloads** -- download images, videos, and thumbnails from ad creatives
 - **Ad Enrichment** -- fetch additional detail data from the ad snapshot endpoint
 - **Events & Webhooks** -- 7 lifecycle events with callback registration, webhook POST integration
-- **Async Support** -- full async/await API using httpx (optional dependency)
+- **Async Support** -- full async/await API using curl_cffi (preferred) or httpx (fallback)
 - **Proxy Support** -- single proxy, proxy rotation with failure tracking and dead-proxy cooldown
 - **Structured Logging** -- text or JSON log format, optional file output
 - **Collection Reporting** -- summary statistics with throughput metrics

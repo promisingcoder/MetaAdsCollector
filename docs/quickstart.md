@@ -89,6 +89,6 @@ meta-ads-collector -q "test" --proxy "host:port:user:pass" -o ads.json
 - [Deduplication guide](deduplication.md) -- avoid collecting the same ad twice
 - [Media downloads](media.md) -- download images and videos from ad creatives
 - [Events & webhooks](events.md) -- react to collection lifecycle events
-- [Async usage](async.md) -- use with asyncio and httpx
+- [Async usage](async.md) -- use with asyncio (curl_cffi or httpx)
 - [Proxy configuration](proxy.md) -- proxy rotation and failure handling
 - [CLI reference](cli.md) -- complete list of CLI flags

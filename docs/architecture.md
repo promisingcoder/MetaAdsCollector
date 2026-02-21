@@ -265,7 +265,7 @@ Seven lifecycle events:
 self._logic = MetaAdsClient.__new__(MetaAdsClient)  # No __init__ call
 ```
 
-All pure-logic methods (token extraction, payload building, response parsing) are delegated to `_logic`. Only HTTP methods are reimplemented using `httpx.AsyncClient`.
+All pure-logic methods (token extraction, payload building, response parsing) are delegated to `_logic`. Only HTTP methods are reimplemented using `curl_cffi.AsyncSession` (preferred) or `httpx.AsyncClient` (fallback). The async client also handles Facebook's 403 verification challenges automatically, matching the sync client's behavior.
 
 `AsyncMetaAdsCollector` mirrors `MetaAdsCollector` method-for-method, using `async def` and `async for` throughout.
 

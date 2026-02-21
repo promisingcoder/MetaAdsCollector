@@ -173,7 +173,7 @@ Close the collector and release resources.
 
 **Module:** `meta_ads_collector.async_collector`
 
-**Requires:** `pip install meta-ads-collector[async]`
+**Requires:** `pip install meta-ads-collector[stealth]` (recommended) or `pip install meta-ads-collector[async]`
 
 ### class AsyncMetaAdsCollector
 
@@ -247,11 +247,11 @@ Close the session.
 
 **Module:** `meta_ads_collector.async_client`
 
-**Requires:** `pip install meta-ads-collector[async]`
+**Requires:** `pip install meta-ads-collector[stealth]` (recommended) or `pip install meta-ads-collector[async]`
 
 ### class AsyncMetaAdsClient
 
-Async mirror of `MetaAdsClient` using `httpx.AsyncClient`. All HTTP methods are async, while pure-logic methods are delegated to the sync client.
+Async mirror of `MetaAdsClient` using `curl_cffi.AsyncSession` (preferred) or `httpx.AsyncClient` (fallback). Handles Facebook's 403 verification challenges automatically. All HTTP methods are async, while pure-logic methods are delegated to the sync client.
 
 Same method signatures as `MetaAdsClient` with `async def`.
 
