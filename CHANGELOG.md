@@ -5,6 +5,28 @@ All notable changes to this project will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [1.2.0] - 2026-02-21
+
+### Fixed
+- **Async client**: Rewrote to use `curl_cffi.AsyncSession` for TLS fingerprint impersonation, fixing 403 blocks from Facebook. Falls back to `httpx.AsyncClient` when curl_cffi is not installed.
+- **Async client**: Added 403 verification challenge handling (same as sync client), enabling the async client to work without proxies.
+- **Political ads parsing**: Fixed `'str' object has no attribute 'get'` crash when parsing political ads where `spend` is a string (e.g., `"$9K-$10K"`) instead of a dict.
+- **Impression text parsing**: Handle `impressions_with_index` format (`{"impressions_text": ">1M", "impressions_index": 39}`) returned for political ads.
+- **Publisher platform**: Added `publisher_platform` (singular) key lookup alongside plural `publisher_platforms`.
+- **Delivery dates**: Added `start_date`/`end_date` key lookups for delivery times.
+- **Reach parsing**: Added `_parse_reach` classmethod to handle `reach`/`reach_estimate` in string and dict formats.
+- **Audience distributions**: Added `isinstance(item, dict)` guards for demographic and region distribution parsing.
+- **Estimated audience size**: Added `isinstance(dict)` check before calling `.get()`.
+
+### Changed
+- **Python 3.9 compatibility**: Added `from __future__ import annotations` to `models.py` and modernized all type annotations from `Optional[X]` to `X | None`.
+- **Async transport**: The async client now prefers `curl_cffi.AsyncSession` over `httpx.AsyncClient` when both are installed, matching the sync client's TLS impersonation behavior.
+
+## [1.1.0] - 2026-02-21
+
+### Changed
+- Version bump for PyPI release.
+
 ## [1.0.0] - 2026-02-08
 
 ### Added
@@ -68,10 +90,10 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - Optional batch mode for webhook sends
 
 #### Async Support
-- `AsyncMetaAdsClient` using httpx for non-blocking HTTP
+- `AsyncMetaAdsClient` with `curl_cffi.AsyncSession` (preferred) or `httpx.AsyncClient` (fallback)
 - `AsyncMetaAdsCollector` mirroring the sync API with `async for` generators
 - Async `search()`, `collect()`, `collect_to_json()`, `collect_to_csv()`, `search_pages()`
-- Optional dependency: `pip install meta-ads-collector[async]`
+- Optional dependency: `pip install meta-ads-collector[stealth]` (recommended) or `pip install meta-ads-collector[async]`
 
 #### Proxy Support
 - Single proxy configuration (host:port or host:port:user:pass)

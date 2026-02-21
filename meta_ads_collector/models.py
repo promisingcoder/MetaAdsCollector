@@ -1,17 +1,67 @@
 """Data models for Meta Ads Library"""
 
+from __future__ import annotations
+
 import json
+import re as _re
 from dataclasses import asdict, dataclass, field
 from datetime import datetime, timezone
-from typing import Any, Optional
+from typing import Any
+
+
+def _parse_spend_string(text: str) -> tuple[int | None, int | None]:
+    """Parse a spend string like '$9K-$10K' into (lower, upper) ints."""
+    multipliers = {"K": 1_000, "M": 1_000_000, "B": 1_000_000_000}
+    parts = _re.findall(r'[\d,.]+[KMB]?', text)
+    values: list[int] = []
+    for part in parts:
+        suffix = part[-1].upper() if part[-1].upper() in multipliers else ""
+        num_str = part[:-1] if suffix else part
+        num_str = num_str.replace(",", "")
+        try:
+            num = float(num_str)
+            if suffix:
+                num *= multipliers[suffix]
+            values.append(int(num))
+        except ValueError:
+            continue
+    if len(values) >= 2:
+        return values[0], values[1]
+    if len(values) == 1:
+        return values[0], values[0]
+    return None, None
+
+
+def _parse_impression_text(text: str) -> tuple[int | None, int | None]:
+    """Parse an impression text like '>1M' or '1K-5K' into (lower, upper)."""
+    multipliers = {"K": 1_000, "M": 1_000_000, "B": 1_000_000_000}
+    parts = _re.findall(r'[\d,.]+[KMB]?', text)
+    values: list[int] = []
+    for part in parts:
+        suffix = part[-1].upper() if part[-1].upper() in multipliers else ""
+        num_str = part[:-1] if suffix else part
+        num_str = num_str.replace(",", "")
+        try:
+            num = float(num_str)
+            if suffix:
+                num *= multipliers[suffix]
+            values.append(int(num))
+        except ValueError:
+            continue
+    if len(values) >= 2:
+        return values[0], values[1]
+    if len(values) == 1:
+        # ">1M" means lower=1M, upper=None
+        return values[0], None
+    return None, None
 
 
 @dataclass
 class SpendRange:
     """Represents ad spend range"""
-    lower_bound: Optional[int] = None
-    upper_bound: Optional[int] = None
-    currency: Optional[str] = None
+    lower_bound: int | None = None
+    upper_bound: int | None = None
+    currency: str | None = None
 
     def __str__(self) -> str:
         if self.lower_bound is not None and self.upper_bound is not None:
@@ -22,8 +72,8 @@ class SpendRange:
 @dataclass
 class ImpressionRange:
     """Represents impression count range"""
-    lower_bound: Optional[int] = None
-    upper_bound: Optional[int] = None
+    lower_bound: int | None = None
+    upper_bound: int | None = None
 
     def __str__(self) -> str:
         if self.lower_bound is not None and self.upper_bound is not None:
@@ -44,18 +94,18 @@ class AudienceDistribution:
 @dataclass
 class AdCreative:
     """Ad creative content - text, media, links"""
-    body: Optional[str] = None
-    caption: Optional[str] = None
-    description: Optional[str] = None
-    title: Optional[str] = None
-    link_url: Optional[str] = None
-    image_url: Optional[str] = None
-    video_url: Optional[str] = None
-    video_hd_url: Optional[str] = None
-    video_sd_url: Optional[str] = None
-    thumbnail_url: Optional[str] = None
-    cta_text: Optional[str] = None
-    cta_type: Optional[str] = None
+    body: str | None = None
+    caption: str | None = None
+    description: str | None = None
+    title: str | None = None
+    link_url: str | None = None
+    image_url: str | None = None
+    video_url: str | None = None
+    video_hd_url: str | None = None
+    video_sd_url: str | None = None
+    thumbnail_url: str | None = None
+    cta_text: str | None = None
+    cta_type: str | None = None
 
     def to_dict(self) -> dict[str, Any]:
         return {k: v for k, v in asdict(self).items() if v is not None}
@@ -66,9 +116,9 @@ class PageInfo:
     """Information about the page running the ad"""
     id: str
     name: str
-    profile_picture_url: Optional[str] = None
-    page_url: Optional[str] = None
-    likes: Optional[int] = None
+    profile_picture_url: str | None = None
+    page_url: str | None = None
+    likes: int | None = None
     verified: bool = False
 
     def to_dict(self) -> dict[str, Any]:
@@ -84,12 +134,12 @@ class PageSearchResult:
     """
     page_id: str
     page_name: str
-    page_profile_uri: Optional[str] = None
-    page_alias: Optional[str] = None
-    page_logo_url: Optional[str] = None
-    page_verified: Optional[bool] = None
-    page_like_count: Optional[int] = None
-    category: Optional[str] = None
+    page_profile_uri: str | None = None
+    page_alias: str | None = None
+    page_logo_url: str | None = None
+    page_verified: bool | None = None
+    page_like_count: int | None = None
+    category: str | None = None
 
     def to_dict(self) -> dict[str, Any]:
         """Convert to dictionary."""
@@ -99,8 +149,8 @@ class PageSearchResult:
 @dataclass
 class TargetingInfo:
     """Ad targeting information"""
-    age_min: Optional[int] = None
-    age_max: Optional[int] = None
+    age_min: int | None = None
+    age_max: int | None = None
     genders: list[str] = field(default_factory=list)
     locations: list[str] = field(default_factory=list)
     location_types: list[str] = field(default_factory=list)
@@ -122,38 +172,38 @@ class Ad:
     """
     # Core identifiers
     id: str  # Ad Archive ID
-    ad_library_id: Optional[str] = None
+    ad_library_id: str | None = None
 
     # Page information
-    page: Optional[PageInfo] = None
+    page: PageInfo | None = None
 
     # Ad status and timing
-    is_active: Optional[bool] = None  # None when status unknown from search results
-    ad_status: Optional[str] = None  # ACTIVE, INACTIVE, etc.
-    delivery_start_time: Optional[datetime] = None
-    delivery_stop_time: Optional[datetime] = None
+    is_active: bool | None = None  # None when status unknown from search results
+    ad_status: str | None = None  # ACTIVE, INACTIVE, etc.
+    delivery_start_time: datetime | None = None
+    delivery_stop_time: datetime | None = None
 
     # Creative content (can have multiple variations)
     creatives: list[AdCreative] = field(default_factory=list)
 
     # Snapshot and preview
-    snapshot_url: Optional[str] = None
-    ad_snapshot_url: Optional[str] = None
+    snapshot_url: str | None = None
+    ad_snapshot_url: str | None = None
 
     # Performance metrics
-    impressions: Optional[ImpressionRange] = None
-    spend: Optional[SpendRange] = None
-    reach: Optional[ImpressionRange] = None
-    currency: Optional[str] = None
+    impressions: ImpressionRange | None = None
+    spend: SpendRange | None = None
+    reach: ImpressionRange | None = None
+    currency: str | None = None
 
     # Audience demographics
     age_gender_distribution: list[AudienceDistribution] = field(default_factory=list)
     region_distribution: list[AudienceDistribution] = field(default_factory=list)
 
     # Targeting
-    targeting: Optional[TargetingInfo] = None
-    estimated_audience_size_lower: Optional[int] = None
-    estimated_audience_size_upper: Optional[int] = None
+    targeting: TargetingInfo | None = None
+    estimated_audience_size_lower: int | None = None
+    estimated_audience_size_upper: int | None = None
 
     # Platform and placement
     publisher_platforms: list[str] = field(default_factory=list)  # facebook, instagram, messenger, audience_network
@@ -163,22 +213,22 @@ class Ad:
 
     # Political/Issue ad specific fields
     bylines: list[str] = field(default_factory=list)
-    funding_entity: Optional[str] = None
-    disclaimer: Optional[str] = None
+    funding_entity: str | None = None
+    disclaimer: str | None = None
 
     # Categories
-    ad_type: Optional[str] = None  # POLITICAL_AND_ISSUE_ADS, HOUSING_ADS, etc.
+    ad_type: str | None = None  # POLITICAL_AND_ISSUE_ADS, HOUSING_ADS, etc.
     categories: list[str] = field(default_factory=list)
 
     # EU transparency fields
     beneficiary_payers: list[str] = field(default_factory=list)
 
     # Metadata
-    collation_id: Optional[str] = None
-    collation_count: Optional[int] = None
+    collation_id: str | None = None
+    collation_count: int | None = None
 
     # Raw data for debugging/extensibility
-    raw_data: Optional[dict[str, Any]] = field(default=None, repr=False)
+    raw_data: dict[str, Any] | None = field(default=None, repr=False)
 
     # Collection metadata
     collected_at: datetime = field(default_factory=lambda: datetime.now(timezone.utc))
@@ -242,7 +292,24 @@ class Ad:
         return json.dumps(self.to_dict(include_raw=include_raw), indent=indent, ensure_ascii=False)
 
     @classmethod
-    def _extract_body_text(cls, body_value: Any) -> Optional[str]:
+    def _parse_reach(cls, data: dict[str, Any]) -> ImpressionRange | None:
+        """Parse reach data from various API formats."""
+        reach_data = data.get("reach") or data.get("reach_estimate") or {}
+        if not reach_data:
+            return None
+        if isinstance(reach_data, str):
+            lower, upper = _parse_impression_text(reach_data)
+            return ImpressionRange(lower_bound=lower, upper_bound=upper)
+        if isinstance(reach_data, dict):
+            lower = reach_data.get("lower_bound") or reach_data.get("lowerBound")
+            upper = reach_data.get("upper_bound") or reach_data.get("upperBound")
+            if lower is None and upper is None:
+                return None
+            return ImpressionRange(lower_bound=lower, upper_bound=upper)
+        return None
+
+    @classmethod
+    def _extract_body_text(cls, body_value: Any) -> str | None:
         """Extract body text from API response body field.
 
         The body can be either a plain string or a dict ``{"text": "..."}``
@@ -263,7 +330,7 @@ class Ad:
         return None
 
     @classmethod
-    def from_graphql_response(cls, data: dict[str, Any]) -> "Ad":
+    def from_graphql_response(cls, data: dict[str, Any]) -> Ad:
         """
         Parse an ad from the Meta Ad Library GraphQL response.
 
@@ -418,8 +485,8 @@ class Ad:
         # Parse dates
         delivery_start = None
         delivery_stop = None
-        start_time = data.get("ad_delivery_start_time") or data.get("startDate")
-        stop_time = data.get("ad_delivery_stop_time") or data.get("endDate")
+        start_time = data.get("ad_delivery_start_time") or data.get("startDate") or data.get("start_date")
+        stop_time = data.get("ad_delivery_stop_time") or data.get("endDate") or data.get("end_date")
 
         if start_time:
             try:
@@ -441,27 +508,51 @@ class Ad:
 
         # Parse impressions
         impressions = None
-        imp_data = data.get("impressions") or data.get("impressionsWithIndex") or {}
+        imp_data = (
+            data.get("impressions")
+            or data.get("impressionsWithIndex")
+            or data.get("impressions_with_index")
+            or {}
+        )
         if imp_data:
-            impressions = ImpressionRange(
-                lower_bound=imp_data.get("lower_bound") or imp_data.get("lowerBound"),
-                upper_bound=imp_data.get("upper_bound") or imp_data.get("upperBound"),
-            )
+            if isinstance(imp_data, str):
+                lower, upper = _parse_impression_text(imp_data)
+                impressions = ImpressionRange(lower_bound=lower, upper_bound=upper)
+            elif isinstance(imp_data, dict):
+                # Standard format: {lower_bound, upper_bound}
+                lower = imp_data.get("lower_bound") or imp_data.get("lowerBound")
+                upper = imp_data.get("upper_bound") or imp_data.get("upperBound")
+                # Alternative format: {impressions_text, impressions_index}
+                if lower is None and upper is None:
+                    imp_text = imp_data.get("impressions_text") or imp_data.get("impressionsText")
+                    if imp_text:
+                        lower, upper = _parse_impression_text(str(imp_text))
+                impressions = ImpressionRange(lower_bound=lower, upper_bound=upper)
 
         # Parse spend
         spend = None
         spend_data = data.get("spend") or data.get("spendWithIndex") or {}
         if spend_data:
-            spend = SpendRange(
-                lower_bound=spend_data.get("lower_bound") or spend_data.get("lowerBound"),
-                upper_bound=spend_data.get("upper_bound") or spend_data.get("upperBound"),
-                currency=data.get("currency"),
-            )
+            if isinstance(spend_data, str):
+                lower, upper = _parse_spend_string(spend_data)
+                spend = SpendRange(
+                    lower_bound=lower,
+                    upper_bound=upper,
+                    currency=data.get("currency"),
+                )
+            elif isinstance(spend_data, dict):
+                spend = SpendRange(
+                    lower_bound=spend_data.get("lower_bound") or spend_data.get("lowerBound"),
+                    upper_bound=spend_data.get("upper_bound") or spend_data.get("upperBound"),
+                    currency=data.get("currency"),
+                )
 
         # Parse demographic distribution
         age_gender_dist = []
         demo_data = data.get("demographic_distribution") or data.get("demographicDistribution") or []
         for item in demo_data:
+            if not isinstance(item, dict):
+                continue
             age_gender_dist.append(AudienceDistribution(
                 category=f"{item.get('age', 'unknown')}_{item.get('gender', 'unknown')}",
                 percentage=float(item.get("percentage", 0)),
@@ -471,13 +562,20 @@ class Ad:
         region_dist = []
         region_data = data.get("delivery_by_region") or data.get("deliveryByRegion") or []
         for item in region_data:
+            if not isinstance(item, dict):
+                continue
             region_dist.append(AudienceDistribution(
                 category=item.get("region", "unknown"),
                 percentage=float(item.get("percentage", 0)),
             ))
 
-        # Parse publisher platforms
-        platforms = data.get("publisher_platforms") or data.get("publisherPlatforms") or []
+        # Parse publisher platforms (API uses both singular and plural keys)
+        platforms = (
+            data.get("publisher_platforms")
+            or data.get("publisherPlatforms")
+            or data.get("publisher_platform")
+            or []
+        )
         if isinstance(platforms, str):
             platforms = [platforms]
 
@@ -501,16 +599,17 @@ class Ad:
             ad_snapshot_url=data.get("ad_snapshot_url") or data.get("adSnapshotUrl"),
             impressions=impressions,
             spend=spend,
+            reach=cls._parse_reach(data),
             currency=data.get("currency"),
             age_gender_distribution=age_gender_dist,
             region_distribution=region_dist,
             estimated_audience_size_lower=(
                 data.get("estimated_audience_size", {}).get("lower_bound")
-                if data.get("estimated_audience_size") else None
+                if isinstance(data.get("estimated_audience_size"), dict) else None
             ),
             estimated_audience_size_upper=(
                 data.get("estimated_audience_size", {}).get("upper_bound")
-                if data.get("estimated_audience_size") else None
+                if isinstance(data.get("estimated_audience_size"), dict) else None
             ),
             publisher_platforms=platforms,
             languages=data.get("languages") or [],
@@ -530,10 +629,10 @@ class Ad:
 class SearchResult:
     """Represents a paginated search result from the Ad Library"""
     ads: list[Ad]
-    total_count: Optional[int] = None
+    total_count: int | None = None
     has_next_page: bool = False
-    end_cursor: Optional[str] = None
-    search_id: Optional[str] = None
+    end_cursor: str | None = None
+    search_id: str | None = None
 
     def to_dict(self) -> dict[str, Any]:
         return {

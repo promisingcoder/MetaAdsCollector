@@ -3,20 +3,13 @@
 Mirrors :class:`~meta_ads_collector.collector.MetaAdsCollector` method-for-
 method but uses ``async`` / ``await`` throughout.
 
-Requires the ``httpx`` package::
+Requires either ``curl_cffi`` (recommended) or ``httpx``::
 
-    pip install meta-ads-collector[async]
+    pip install meta-ads-collector[stealth]   # curl_cffi
+    pip install meta-ads-collector[async]     # httpx
 """
 
 from __future__ import annotations
-
-try:
-    import httpx  # noqa: F401 -- presence check only
-except ImportError:
-    raise ImportError(
-        "httpx is required for async support. "
-        "Install it with: pip install meta-ads-collector[async]"
-    ) from None
 
 import csv
 import json

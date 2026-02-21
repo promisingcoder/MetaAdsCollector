@@ -1,14 +1,20 @@
 # Async Usage Guide
 
-`meta-ads-collector` provides a full async API for use with `asyncio`. The async implementation uses [httpx](https://www.python-httpx.org/) instead of `requests`.
+`meta-ads-collector` provides a full async API for use with `asyncio`. The async client uses the same TLS fingerprint impersonation as the sync client to avoid detection.
 
 ## Installation
 
+The async client uses `curl_cffi` (recommended) for TLS fingerprint impersonation, or falls back to `httpx`:
+
 ```bash
+# Recommended: uses curl_cffi (same TLS fingerprinting as sync client)
+pip install meta-ads-collector[stealth]
+
+# Alternative: uses httpx (may get blocked by Facebook's TLS fingerprint detection)
 pip install meta-ads-collector[async]
 ```
 
-This installs `httpx>=0.24.0` as an additional dependency.
+If both `curl_cffi` and `httpx` are installed, `curl_cffi` is preferred automatically.
 
 ## AsyncMetaAdsCollector
 
@@ -135,7 +141,9 @@ async with AsyncMetaAdsClient() as client:
 
 ## Notes
 
-- The async client handles rate limiting with `asyncio.sleep()` instead of `time.sleep()`
+- The async client prefers `curl_cffi.AsyncSession` for TLS fingerprint impersonation, falling back to `httpx.AsyncClient` if curl_cffi is not installed
+- Facebook's 403 verification challenges are handled automatically (same as the sync client)
+- Rate limiting uses `asyncio.sleep()` instead of `time.sleep()`
 - Session initialization is performed asynchronously on the first request
 - Event callbacks are still synchronous (they run in the event loop thread)
 - Proxy rotation with `ProxyPool` works the same way as in the sync client

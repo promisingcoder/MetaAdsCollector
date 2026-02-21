@@ -4,7 +4,7 @@ build-backend = "setuptools.build_meta"
 
 [project]
 name = "meta-ads-collector"
-version = "1.1.0"
+version = "1.2.0"
 description = "Collect ads from the Meta (Facebook) Ad Library -- no API key required"
 readme = "README.md"
 license = "MIT"

@@ -49,16 +49,16 @@ meta-ads-collector -q "solar panels" -c US -n 10 -o ads.json
 pip install meta-ads-collector
 ```
 
-With async support (requires [httpx](https://www.python-httpx.org/)):
-
-```bash
-pip install meta-ads-collector[async]
-```
-
-With stealth TLS fingerprinting (requires [curl_cffi](https://github.com/lexiforest/curl_cffi)):
+With stealth TLS fingerprinting (recommended, also enables async support):
 
 ```bash
 pip install meta-ads-collector[stealth]
+```
+
+With async support only (uses [httpx](https://www.python-httpx.org/)):
+
+```bash
+pip install meta-ads-collector[async]
 ```
 
 From source:
@@ -379,9 +379,13 @@ with MetaAdsCollector() as collector:
 
 ## Async Support
 
-Full async API using httpx (optional dependency).
+Full async API with the same TLS fingerprint impersonation as the sync client.
 
 ```bash
+# Recommended: uses curl_cffi for TLS fingerprinting (same as sync client)
+pip install meta-ads-collector[stealth]
+
+# Alternative: uses httpx (may be detected by Facebook)
 pip install meta-ads-collector[async]
 ```
 
@@ -401,7 +405,7 @@ async def main():
 asyncio.run(main())
 ```
 
-The async collector mirrors the sync API: `search()`, `collect()`, `collect_to_json()`, `collect_to_csv()`, `search_pages()`, `get_stats()`.
+The async collector mirrors the sync API: `search()`, `collect()`, `collect_to_json()`, `collect_to_csv()`, `search_pages()`, `get_stats()`. When `curl_cffi` is installed, the async client uses `curl_cffi.AsyncSession` with Chrome TLS impersonation. Otherwise it falls back to `httpx.AsyncClient`.
 
 ---
 

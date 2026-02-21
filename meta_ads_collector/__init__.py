@@ -32,7 +32,7 @@ from .reporting import CollectionReport
 from .url_parser import extract_page_id_from_url
 from .webhooks import WebhookSender
 
-__version__ = "1.1.0"
+__version__ = "1.2.0"
 __all__ = [
     # Models
     "Ad",

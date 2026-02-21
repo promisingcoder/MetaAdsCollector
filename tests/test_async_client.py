@@ -454,9 +454,8 @@ class TestAsyncProxyRotation:
     @pytest.mark.asyncio
     async def test_proxy_mark_failure_on_429(self):
         """Proxy pool's mark_failure is called on 429 rate limit."""
-        import httpx
-
         from meta_ads_collector.async_client import AsyncMetaAdsClient
+        from meta_ads_collector.exceptions import MetaAdsError
         from meta_ads_collector.proxy_pool import ProxyPool
 
         pool = ProxyPool(["host1:8080"])
@@ -473,16 +472,14 @@ class TestAsyncProxyRotation:
         client._client.headers = {}
 
         # With max_retries=1, it will 429 once then fall through
-        with pytest.raises(httpx.HTTPError):
+        with pytest.raises(MetaAdsError):
             await client._make_request("GET", "http://example.com")
 
         pool.mark_failure.assert_called_with("http://host1:8080")
 
     @pytest.mark.asyncio
     async def test_proxy_mark_failure_on_http_error(self):
-        """Proxy pool's mark_failure is called on httpx.HTTPError."""
-        import httpx
-
+        """Proxy pool's mark_failure is called on connection error."""
         from meta_ads_collector.async_client import AsyncMetaAdsClient
         from meta_ads_collector.proxy_pool import ProxyPool
 
@@ -495,11 +492,11 @@ class TestAsyncProxyRotation:
 
         client._client = MagicMock()
         client._client.request = AsyncMock(
-            side_effect=httpx.ConnectError("connection refused"),
+            side_effect=ConnectionError("connection refused"),
         )
         client._client.headers = {}
 
-        with pytest.raises(httpx.ConnectError):
+        with pytest.raises(ConnectionError):
             await client._make_request("GET", "http://example.com")
 
         pool.mark_failure.assert_called_once_with("http://host1:8080")
