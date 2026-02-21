@@ -3,8 +3,8 @@
 # ---------------------------------------------------------------------------
 # HTTP / browser fingerprint
 # ---------------------------------------------------------------------------
-CHROME_VERSION = "131"
-CHROME_FULL_VERSION = "131.0.6778.140"
+CHROME_VERSION = "145"
+CHROME_FULL_VERSION = "145.0.7632.110"
 USER_AGENT = (
     f"Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 "
     f"(KHTML, like Gecko) Chrome/{CHROME_VERSION}.0.0.0 Safari/537.36"
@@ -42,7 +42,7 @@ DEFAULT_PAGE_SIZE = 10  # results per API request (max ~30)
 # doc_ids from the Ad Library page HTML on each session init.  If
 # dynamic extraction fails, these values are used instead.
 #
-# Last verified working: 2025-02-08
+# Last verified working: 2026-02-21
 # If requests suddenly return errors about unknown doc_ids, these
 # values likely need updating.  Run the library with DEBUG logging
 # to see whether dynamic extraction is succeeding.
@@ -64,7 +64,7 @@ FALLBACK_CSR = (
     "E4a2W0C8eEcE4S2m12wg8O1fwau1IwiEow9qE5S3KUK320g-1fDw49w2v80PS07XU0ptw2Ao"
     "05Ey02zC0aFw0hIQ00BPo06XK6k00CSo072W09xw4jw"
 )
-FALLBACK_REV = "1032373751"
+FALLBACK_REV = "1033837939"
 
 # ---------------------------------------------------------------------------
 # Ad type constants

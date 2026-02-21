@@ -8,6 +8,12 @@ Get from zero to collecting ads in under 60 seconds.
 pip install meta-ads-collector
 ```
 
+For stealth TLS fingerprinting (recommended for production use):
+
+```bash
+pip install meta-ads-collector[stealth]
+```
+
 ## Python API
 
 ```python

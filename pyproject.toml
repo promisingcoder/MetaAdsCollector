@@ -30,7 +30,6 @@ classifiers = [
     "Development Status :: 5 - Production/Stable",
     "Intended Audience :: Developers",
     "Intended Audience :: Science/Research",
-    "License :: OSI Approved :: MIT License",
     "Operating System :: OS Independent",
     "Programming Language :: Python :: 3",
     "Programming Language :: Python :: 3.9",
@@ -50,6 +49,9 @@ dependencies = [
 async = [
     "httpx>=0.24.0",
 ]
+stealth = [
+    "curl_cffi>=0.7.0",
+]
 dev = [
     "pytest>=7.0",
     "pytest-cov>=4.0",
@@ -63,11 +65,11 @@ dev = [
 meta-ads-collector = "meta_ads_collector.cli:main"
 
 [project.urls]
-Homepage = "https://github.com/Yossef/meta-ads-collector"
-Repository = "https://github.com/Yossef/meta-ads-collector"
-Issues = "https://github.com/Yossef/meta-ads-collector/issues"
-Documentation = "https://github.com/Yossef/meta-ads-collector/tree/main/docs"
-Changelog = "https://github.com/Yossef/meta-ads-collector/blob/main/CHANGELOG.md"
+Homepage = "https://github.com/promisingcoder/MetaAdsCollector"
+Repository = "https://github.com/promisingcoder/MetaAdsCollector"
+Issues = "https://github.com/promisingcoder/MetaAdsCollector/issues"
+Documentation = "https://github.com/promisingcoder/MetaAdsCollector/tree/main/docs"
+Changelog = "https://github.com/promisingcoder/MetaAdsCollector/blob/main/CHANGELOG.md"
 
 [tool.setuptools.packages.find]
 include = ["meta_ads_collector*"]

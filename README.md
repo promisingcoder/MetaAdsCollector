@@ -55,12 +55,18 @@ With async support (requires [httpx](https://www.python-httpx.org/)):
 pip install meta-ads-collector[async]
 ```
 
+With stealth TLS fingerprinting (requires [curl_cffi](https://github.com/lexiforest/curl_cffi)):
+
+```bash
+pip install meta-ads-collector[stealth]
+```
+
 From source:
 
 ```bash
 git clone https://github.com/promisingcoder/MetaAdsCollector.git
 cd meta-ads-collector
-pip install -e ".[dev]"
+pip install -e ".[dev,async,stealth]"
 ```
 
 **Requirements:** Python 3.9+
@@ -79,7 +85,7 @@ pip install -e ".[dev]"
 - **Collection Reporting** -- summary statistics with throughput metrics
 - **Export Formats** -- JSON, CSV, JSONL
 - **Stream Mode** -- yield lifecycle events alongside ads through a single iterator
-- **Detection Avoidance** -- browser fingerprint randomization, dynamic token extraction, session management
+- **Detection Avoidance** -- browser fingerprint randomization, TLS fingerprint impersonation (via `curl_cffi`), dynamic token extraction, session management
 
 ---
 

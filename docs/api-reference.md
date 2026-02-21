@@ -62,7 +62,7 @@ Search for ads and yield results as an iterator.
 | `country` | `str` | `"US"` | ISO 3166-1 alpha-2 country code |
 | `ad_type` | `str` | `"ALL"` | Ad type filter (`"ALL"`, `"POLITICAL_AND_ISSUE_ADS"`, `"HOUSING_ADS"`, `"EMPLOYMENT_ADS"`, `"CREDIT_ADS"`) |
 | `status` | `str` | `"ACTIVE"` | Status filter (`"ACTIVE"`, `"INACTIVE"`, `"ALL"`) |
-| `search_type` | `str` | `"KEYWORD_EXACT_PHRASE"` | Search type (`"KEYWORD_EXACT_PHRASE"`, `"KEYWORD_UNORDERED"`, `"PAGE"`) |
+| `search_type` | `str` | `"KEYWORD_UNORDERED"` | Search type (`"KEYWORD_EXACT_PHRASE"`, `"KEYWORD_UNORDERED"`, `"PAGE"`) |
 | `page_ids` | `list[str] \| None` | `None` | Filter by specific page IDs |
 | `sort_by` | `str \| None` | `"SORT_BY_TOTAL_IMPRESSIONS"` | Sort order (`"SORT_BY_TOTAL_IMPRESSIONS"` or `None` for relevancy) |
 | `max_results` | `int \| None` | `None` | Maximum ads to collect (`None` = no limit) |
@@ -160,7 +160,7 @@ Close the collector and release resources.
 | `STATUS_ACTIVE` | `"ACTIVE"` |
 | `STATUS_INACTIVE` | `"INACTIVE"` |
 | `STATUS_ALL` | `"ALL"` |
-| `SEARCH_KEYWORD` | `"KEYWORD_EXACT_PHRASE"` |
+| `SEARCH_KEYWORD` | `"KEYWORD_UNORDERED"` |
 | `SEARCH_EXACT` | `"KEYWORD_EXACT_PHRASE"` |
 | `SEARCH_UNORDERED` | `"KEYWORD_UNORDERED"` |
 | `SEARCH_PAGE` | `"PAGE"` |
@@ -722,7 +722,7 @@ Format a CollectionReport as a JSON string.
 
 | Constant | Value |
 |---|---|
-| `SEARCH_KEYWORD` | `"KEYWORD_EXACT_PHRASE"` |
+| `SEARCH_KEYWORD` | `"KEYWORD_UNORDERED"` |
 | `SEARCH_EXACT` | `"KEYWORD_EXACT_PHRASE"` |
 | `SEARCH_UNORDERED` | `"KEYWORD_UNORDERED"` |
 | `SEARCH_PAGE` | `"PAGE"` |

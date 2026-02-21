@@ -13,8 +13,8 @@ Contributions to `meta-ads-collector` are welcome. This guide covers the develop
 ### Clone and Install
 
 ```bash
-git clone https://github.com/Yossef/meta-ads-collector.git
-cd meta-ads-collector
+git clone https://github.com/promisingcoder/MetaAdsCollector.git
+cd MetaAdsCollector
 
 # Create a virtual environment
 python -m venv .venv
@@ -22,7 +22,7 @@ source .venv/bin/activate  # Linux/macOS
 # .venv\Scripts\activate   # Windows
 
 # Install in editable mode with all dev dependencies
-pip install -e ".[dev,async]"
+pip install -e ".[dev,async,stealth]"
 ```
 
 Or use the Makefile:
@@ -37,6 +37,7 @@ make install-dev
 |---|---|---|
 | (none) | `requests>=2.28.0` | Always (core dependency) |
 | `async` | `httpx>=0.24.0` | When working on async modules |
+| `stealth` | `curl_cffi>=0.7.0` | For TLS fingerprint impersonation (recommended) |
 | `dev` | `pytest`, `pytest-cov`, `pytest-asyncio`, `ruff`, `mypy`, `types-requests` | Always for development |
 
 ## Running Tests

@@ -478,7 +478,7 @@ class AsyncMetaAdsClient:
             "sessionID": session_id,
             "source": None,
             "startDate": None,
-            "v": "fbece7",
+            "v": self._tokens.get("v", "fbece7"),
             "viewAllPageID": "0",
         }
 
@@ -597,7 +597,7 @@ class AsyncMetaAdsClient:
 
         from urllib.parse import quote
 
-        variables = {"queryString": query, "country": country}
+        variables = {"queryString": query, "country": country, "adType": "ALL", "isMobile": False}
         typeahead_doc_id = self._doc_ids.get(
             "useAdLibraryTypeaheadSuggestionDataSourceQuery", DOC_ID_TYPEAHEAD,
         )

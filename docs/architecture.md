@@ -90,10 +90,12 @@ MetaAdsClient.initialize()
 | `lsd` | CSRF protection (mandatory) | `"LSD",[],{"token":"..."}`, `name="lsd" value="..."` |
 | `__rev` / `__spin_r` | Build revision | `"__spin_r":12345`, `"server_revision":12345` |
 | `__spin_t` | Timestamp | `"__spin_t":12345` |
-| `__hsi` | Session ID | `"hsi":"12345"` |
+| `__hsi` | Session ID | `"__hsi":"12345"` (with fallback to `"hsi":"12345"`) |
 | `fb_dtsg` | DTSG token | `"DTSGInitialData",[],{"token":"..."}` |
-| `__dyn` | Dynamic modules hash | `"__dyn":"..."` |
-| `__csr` | CSR hash | `"__csr":"..."` |
+| `__dyn` | Dynamic modules hash | `"__dyn":"..."` (no longer reliably present in HTML; fallback values used) |
+| `__csr` | CSR hash | `"__csr":"..."` (no longer reliably present in HTML; fallback values used) |
+| `v` | Version parameter | `"v":"fbece7"` (dynamically extracted when available) |
+| `x-asbd-id` | ASBD identifier | `"asbd_id":"359341"` (dynamically extracted when available) |
 | `jazoest` | Anti-abuse token | `"jazoest":12345` or computed from LSD |
 
 Fallback values from `constants.py` are used when extraction fails.
@@ -170,9 +172,9 @@ Sessions become stale after `MAX_SESSION_AGE` (30 minutes by default). Before ea
 
 `_refresh_session()` performs a full re-initialization:
 
-1. Close the old `requests.Session`
+1. Close the old session (`requests.Session` or `curl_cffi.requests.Session`)
 2. Generate a new `BrowserFingerprint`
-3. Create a fresh session with new headers
+3. Create a fresh session with new headers (preferring `curl_cffi` when available)
 4. Re-run `initialize()` to get new tokens
 5. Track consecutive refresh failures to prevent infinite loops
 
@@ -192,13 +194,17 @@ If `max_refresh_attempts` consecutive refreshes fail, `SessionExpiredError` is r
 
 `fingerprint.py` generates randomized but internally-consistent browser identities. Each session gets a unique combination of:
 
-- **Chrome version**: Randomly selected from 8 recent versions (125--132)
+- **Chrome version**: Randomly selected from 6 recent versions (140--145)
 - **Platform**: Windows or macOS with matching User-Agent OS string and `sec-ch-ua-platform`
 - **Viewport**: 8 common screen resolutions
 - **DPR**: 5 device pixel ratio values
 - **"Not A Brand" hint**: 4 variations matching real Chrome behavior
 
 All headers derived from the fingerprint are self-consistent -- the Chrome version in the User-Agent matches `sec-ch-ua`, the platform in the UA matches `sec-ch-ua-platform`, etc.
+
+### TLS Fingerprint Impersonation
+
+When the optional `curl_cffi` dependency is installed (`pip install meta-ads-collector[stealth]`), the client uses `curl_cffi.requests.Session(impersonate="chrome")` instead of `requests.Session`. This provides Chrome-like TLS fingerprints (JA3/JA4) at the connection level, making requests indistinguishable from a real Chrome browser to TLS-based bot detection systems. If `curl_cffi` is not installed, the library falls back to `requests.Session` transparently.
 
 ### Request Mimicry
 

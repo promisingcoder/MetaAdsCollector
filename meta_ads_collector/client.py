@@ -16,6 +16,15 @@ from urllib.parse import quote
 
 import requests
 
+# Prefer curl_cffi for TLS fingerprint impersonation (mimics real Chrome
+# JA3/JA4 handshake).  Falls back to plain ``requests`` when unavailable.
+try:
+    from curl_cffi.requests import Session as CffiSession
+
+    _HAS_CURL_CFFI = True
+except ImportError:
+    _HAS_CURL_CFFI = False
+
 from .constants import (
     CHROME_FULL_VERSION,
     CHROME_VERSION,
@@ -144,8 +153,17 @@ class MetaAdsClient:
         # Generate a randomised browser fingerprint for this session
         self._fingerprint: BrowserFingerprint = generate_fingerprint()
 
-        # Session state
-        self.session = requests.Session()
+        # Session state -- prefer curl_cffi for realistic TLS fingerprints
+        self.session: Any  # requests.Session or curl_cffi Session
+        if _HAS_CURL_CFFI:
+            self.session = CffiSession(impersonate="chrome")
+            logger.debug("Using curl_cffi session with Chrome TLS impersonation")
+        else:
+            self.session = requests.Session()
+            logger.debug(
+                "curl_cffi not installed -- using plain requests "
+                "(TLS fingerprint will look like Python, not Chrome)"
+            )
         self._tokens: dict[str, str] = {}
         self._doc_ids: dict[str, str] = {}
         self._initialized = False
@@ -235,7 +253,9 @@ class MetaAdsClient:
             tokens["__spin_b"] = spin_b_match.group(1)
 
         # Extract __hsi (session ID)
-        hsi_match = re.search(r'"hsi":"(\d+)"', html)
+        hsi_match = re.search(r'"__hsi":"(\d+)"', html)
+        if not hsi_match:
+            hsi_match = re.search(r'"hsi":"(\d+)"', html)
         if hsi_match:
             tokens["__hsi"] = hsi_match.group(1)
 
@@ -278,6 +298,18 @@ class MetaAdsClient:
         jazoest_match = re.search(r'"jazoest["\s:]+(\d+)', html)
         if jazoest_match:
             tokens["jazoest"] = jazoest_match.group(1)
+
+        # Extract the "v" API version parameter (used in search variables)
+        v_match = re.search(r'"v"\s*:\s*"([a-f0-9]{4,10})"', html)
+        if v_match:
+            tokens["v"] = v_match.group(1)
+
+        # Extract x-asbd-id (anti-bot defense ID)
+        asbd_match = re.search(r'"asbd_id"\s*:\s*"?(\d+)"?', html)
+        if not asbd_match:
+            asbd_match = re.search(r'x-asbd-id["\s:]+(\d+)', html)
+        if asbd_match:
+            tokens["x-asbd-id"] = asbd_match.group(1)
 
         logger.debug(f"Extracted tokens: {list(tokens.keys())}")
         return tokens
@@ -427,8 +459,11 @@ class MetaAdsClient:
         self.session.close()
         # Generate a fresh fingerprint for the new session
         self._fingerprint = generate_fingerprint()
-        # Create new session
-        self.session = requests.Session()
+        # Create new session (prefer curl_cffi for TLS impersonation)
+        if _HAS_CURL_CFFI:
+            self.session = CffiSession(impersonate="chrome")
+        else:
+            self.session = requests.Session()
         self.session.headers.update(self._fingerprint.get_default_headers())
         self._tokens = {}
         self._initialized = False
@@ -481,10 +516,11 @@ class MetaAdsClient:
 
         try:
             # POST to the challenge endpoint
+            # Real browsers send fetch(url, {method:'POST'}) with no body
+            # and no Content-Type header -- do NOT set content-type here.
             challenge_headers = {
                 "accept": "*/*",
                 "accept-language": "en-US,en;q=0.9",
-                "content-type": "text/plain;charset=UTF-8",
                 "origin": "https://www.facebook.com",
                 "referer": response.url,
                 "sec-ch-ua": self._fingerprint.sec_ch_ua,
@@ -496,11 +532,26 @@ class MetaAdsClient:
                 "user-agent": self._fingerprint.user_agent,
             }
 
-            challenge_response = self.session.post(
-                challenge_url,
-                headers=challenge_headers,
-                timeout=self.timeout,
-            )
+            # Retry the challenge POST up to 3 times (connection can be flaky)
+            challenge_response = None
+            for attempt in range(3):
+                try:
+                    challenge_response = self.session.post(
+                        challenge_url,
+                        headers=challenge_headers,
+                        timeout=self.timeout,
+                    )
+                    break
+                except requests.exceptions.RequestException as retry_err:
+                    logger.warning(
+                        f"Challenge POST attempt {attempt + 1}/3 failed: {retry_err}"
+                    )
+                    if attempt < 2:
+                        time.sleep(2 * (attempt + 1))
+
+            if challenge_response is None:
+                logger.error("All challenge POST attempts failed")
+                return False
 
             logger.debug(f"Challenge response status: {challenge_response.status_code}")
             logger.debug(f"Challenge cookies: {list(self.session.cookies.keys())}")
@@ -510,10 +561,14 @@ class MetaAdsClient:
                 logger.info("Challenge completed - rd_challenge cookie received")
                 return True
             else:
-                # Sometimes the cookie is set with different name patterns
+                # Sometimes the cookie is set with different name patterns.
+                # Cookie jars may yield Cookie objects (.name) or plain
+                # strings depending on the HTTP backend (requests vs
+                # curl_cffi), so normalise to string before checking.
                 for cookie in self.session.cookies:
-                    if "challenge" in cookie.name.lower() or "rd_" in cookie.name.lower():
-                        logger.info(f"Challenge completed - {cookie.name} cookie received")
+                    name = cookie.name if hasattr(cookie, "name") else str(cookie)
+                    if "challenge" in name.lower() or "rd_" in name.lower():
+                        logger.info(f"Challenge completed - {name} cookie received")
                         return True
 
             logger.warning("Challenge POST completed but no challenge cookie received")
@@ -674,7 +729,7 @@ class MetaAdsClient:
         data: Optional[dict] = None,
         headers: Optional[dict] = None,
         **kwargs: Any,
-    ) -> requests.Response:
+    ) -> Any:
         """Make an HTTP request with retry logic and proxy rotation."""
         merged_headers = dict(self.session.headers)
         if headers:
@@ -737,7 +792,7 @@ class MetaAdsClient:
         self,
         payload: dict[str, str],
         headers: dict[str, str],
-    ) -> requests.Response:
+    ) -> Any:
         """
         Make a GraphQL request with automatic session refresh on auth failures.
 
@@ -934,7 +989,7 @@ class MetaAdsClient:
             "sessionID": session_id,
             "source": None,
             "startDate": None,
-            "v": "fbece7",
+            "v": self._tokens.get("v", "fbece7"),
             "viewAllPageID": "0",
         }
 
@@ -976,6 +1031,8 @@ class MetaAdsClient:
         headers = dict(self._fingerprint.get_graphql_headers())
         headers["x-fb-friendly-name"] = "AdLibrarySearchPaginationQuery"
         headers["x-fb-lsd"] = self._tokens.get("lsd", "")
+        if "x-asbd-id" in self._tokens:
+            headers["x-asbd-id"] = self._tokens["x-asbd-id"]
         headers["referer"] = (
             f"{self.AD_LIBRARY_URL}?active_status={active_status.lower()}"
             f"&ad_type={ad_type_url}&country={country}&q={quote(query)}"
@@ -1132,6 +1189,8 @@ class MetaAdsClient:
         variables = {
             "queryString": query,
             "country": country,
+            "adType": "ALL",
+            "isMobile": False,
         }
 
         # Use dynamically extracted doc_id if available
@@ -1188,19 +1247,31 @@ class MetaAdsClient:
         """
         try:
             # Primary structure: data -> ad_library_main -> typeahead_suggestions
-            suggestions = (
+            raw_suggestions = (
                 data.get("data", {})
                 .get("ad_library_main", {})
-                .get("typeahead_suggestions", [])
+                .get("typeahead_suggestions")
             )
+
+            # typeahead_suggestions can be a dict with page_results/keyword_results
+            # or a list of page dicts, depending on the API version.
+            suggestions: list[dict[str, Any]] = []
+            if isinstance(raw_suggestions, dict):
+                suggestions = raw_suggestions.get("page_results", [])
+            elif isinstance(raw_suggestions, list):
+                suggestions = raw_suggestions
 
             # Alternative camelCase structure
             if not suggestions:
-                suggestions = (
+                raw_alt = (
                     data.get("data", {})
                     .get("adLibraryMain", {})
-                    .get("typeaheadSuggestions", [])
+                    .get("typeaheadSuggestions")
                 )
+                if isinstance(raw_alt, dict):
+                    suggestions = raw_alt.get("page_results", []) or raw_alt.get("pageResults", [])
+                elif isinstance(raw_alt, list):
+                    suggestions = raw_alt
 
             # Another common pattern: suggestions wrapped in edges/nodes
             if not suggestions:
@@ -1219,23 +1290,45 @@ class MetaAdsClient:
             pages: list[dict[str, Any]] = []
             for item in suggestions:
                 page = {
-                    "page_id": str(item.get("page_id", "") or item.get("pageID", "")),
-                    "page_name": item.get("page_name", "") or item.get("pageName", ""),
+                    "page_id": str(
+                        item.get("page_id", "")
+                        or item.get("pageID", "")
+                    ),
+                    "page_name": (
+                        item.get("page_name", "")
+                        or item.get("pageName", "")
+                        or item.get("name", "")
+                    ),
                     "page_profile_uri": (
                         item.get("page_profile_uri")
                         or item.get("pageProfileURI")
                         or item.get("page_url")
                         or ""
                     ),
-                    "page_alias": item.get("page_alias") or item.get("pageAlias"),
+                    "page_alias": (
+                        item.get("page_alias")
+                        or item.get("pageAlias")
+                    ),
                     "page_logo_url": (
                         item.get("page_profile_picture_url")
                         or item.get("pageProfilePictureURL")
                         or item.get("profile_picture_url")
+                        or item.get("image_uri")
                     ),
-                    "page_verified": item.get("is_verified") or item.get("isVerified"),
-                    "page_like_count": item.get("page_like_count") or item.get("pageLikeCount"),
-                    "category": item.get("category") or item.get("page_category"),
+                    "page_verified": (
+                        item.get("is_verified")
+                        or item.get("isVerified")
+                        or item.get("verification")
+                    ),
+                    "page_like_count": (
+                        item.get("page_like_count")
+                        or item.get("pageLikeCount")
+                        or item.get("likes")
+                    ),
+                    "category": (
+                        item.get("category")
+                        or item.get("page_category")
+                    ),
                 }
                 # Only include pages that have at least a page_id
                 if page["page_id"]:
