@@ -14,7 +14,6 @@ The fix changed ``copy.copy(ad)`` to ``copy.deepcopy(ad)`` in
 from unittest.mock import MagicMock
 
 import pytest
-import requests
 
 from meta_ads_collector.collector import MetaAdsCollector
 from meta_ads_collector.models import Ad, AdCreative, PageInfo
@@ -29,7 +28,7 @@ def mock_collector():
     """Create a MetaAdsCollector with a mocked client."""
     collector = MetaAdsCollector.__new__(MetaAdsCollector)
     collector.client = MagicMock()
-    collector.client.session = MagicMock(spec=requests.Session)
+    collector.client.session = MagicMock()
     collector.rate_limit_delay = 0
     collector.jitter = 0
     collector.stats = {

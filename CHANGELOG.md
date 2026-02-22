@@ -5,6 +5,20 @@ All notable changes to this project will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [1.3.0] - 2026-02-21
+
+### Changed
+- **curl_cffi is now the sole HTTP dependency.** Removed `requests` and `httpx` entirely. Facebook blocks any HTTP client without Chrome-like TLS fingerprints, so `curl_cffi` (with `impersonate="chrome"`) is the only backend that actually works. Both `requests` and `httpx` were dead-weight fallbacks that failed with HTTP 403.
+- **Simplified installation.** `pip install meta-ads-collector` now includes everything -- no more `[stealth]` or `[async]` extras needed.
+- **Async client simplified.** Removed the `_AsyncResponse` wrapper and httpx fallback code paths. The async client now uses `curl_cffi.AsyncSession` directly.
+- Renamed `ProxyPool.get_requests_proxies()` to `get_proxy_dict()`.
+
+### Removed
+- `requests` dependency (was required, now removed)
+- `httpx` dependency and `[async]` optional extra
+- `[stealth]` optional extra (curl_cffi is now always installed)
+- `types-requests` from dev dependencies
+
 ## [1.2.0] - 2026-02-21
 
 ### Fixed
@@ -90,10 +104,9 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - Optional batch mode for webhook sends
 
 #### Async Support
-- `AsyncMetaAdsClient` with `curl_cffi.AsyncSession` (preferred) or `httpx.AsyncClient` (fallback)
+- `AsyncMetaAdsClient` with `curl_cffi.AsyncSession`
 - `AsyncMetaAdsCollector` mirroring the sync API with `async for` generators
 - Async `search()`, `collect()`, `collect_to_json()`, `collect_to_csv()`, `search_pages()`
-- Optional dependency: `pip install meta-ads-collector[stealth]` (recommended) or `pip install meta-ads-collector[async]`
 
 #### Proxy Support
 - Single proxy configuration (host:port or host:port:user:pass)

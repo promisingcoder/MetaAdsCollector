@@ -15,9 +15,13 @@ import logging
 import time
 from dataclasses import dataclass
 from pathlib import Path
+from typing import Any
 from urllib.parse import urlparse
 
-import requests
+from curl_cffi.requests import Session as CffiSession
+from curl_cffi.requests.exceptions import ConnectionError as CffiConnectionError
+from curl_cffi.requests.exceptions import HTTPError as CffiHTTPError
+from curl_cffi.requests.exceptions import Timeout as CffiTimeout
 
 from .models import Ad
 
@@ -152,8 +156,8 @@ class MediaDownloader:
     Args:
         output_dir: Directory where downloaded files are stored.  Created
             automatically if it does not exist.
-        session: An optional :class:`requests.Session` to reuse.  When
-            ``None`` a fresh session is created.
+        session: An optional ``curl_cffi`` :class:`Session` to reuse.
+            When ``None`` a fresh session is created.
         timeout: Per-request timeout in seconds.
         max_retries: Maximum retry attempts for a single download.
     """
@@ -161,19 +165,19 @@ class MediaDownloader:
     def __init__(
         self,
         output_dir: str | Path,
-        session: requests.Session | None = None,
+        session: CffiSession | None = None,
         timeout: int = 30,
         max_retries: int = 2,
     ) -> None:
         self.output_dir = Path(output_dir)
         self.output_dir.mkdir(parents=True, exist_ok=True)
-        self.session = session or requests.Session()
+        self.session = session or CffiSession(impersonate="chrome")
         self.timeout = timeout
         self.max_retries = max_retries
 
     # ── Internal helpers ─────────────────────────────────────────────
 
-    def _resolve_extension(self, url: str, response: requests.Response | None = None) -> str:
+    def _resolve_extension(self, url: str, response: Any = None) -> str:
         """Determine the file extension for a downloaded resource.
 
         Priority order:
@@ -253,8 +257,9 @@ class MediaDownloader:
                 logger.debug("Downloaded %s (%d bytes)", local_path, bytes_written)
                 return True, None, bytes_written
 
-            except requests.exceptions.HTTPError as exc:
-                status = getattr(exc.response, "status_code", None)
+            except CffiHTTPError as exc:
+                status = getattr(exc, "response", None)
+                status = getattr(status, "status_code", None) if status else None
                 last_error = f"HTTP {status}: {exc}"
                 if status == 403:
                     logger.warning("URL likely expired (403 Forbidden): %s", url)
@@ -264,13 +269,13 @@ class MediaDownloader:
                     "HTTP error on attempt %d/%d for %s: %s",
                     attempt + 1, self.max_retries, url, exc,
                 )
-            except requests.exceptions.ConnectionError as exc:
+            except CffiConnectionError as exc:
                 last_error = f"Connection error: {exc}"
                 logger.warning(
                     "Connection error on attempt %d/%d for %s: %s",
                     attempt + 1, self.max_retries, url, exc,
                 )
-            except requests.exceptions.Timeout as exc:
+            except CffiTimeout as exc:
                 last_error = f"Timeout: {exc}"
                 logger.warning(
                     "Timeout on attempt %d/%d for %s: %s",

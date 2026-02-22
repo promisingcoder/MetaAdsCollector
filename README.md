@@ -49,27 +49,17 @@ meta-ads-collector -q "solar panels" -c US -n 10 -o ads.json
 pip install meta-ads-collector
 ```
 
-With stealth TLS fingerprinting (recommended, also enables async support):
-
-```bash
-pip install meta-ads-collector[stealth]
-```
-
-With async support only (uses [httpx](https://www.python-httpx.org/)):
-
-```bash
-pip install meta-ads-collector[async]
-```
-
 From source:
 
 ```bash
 git clone https://github.com/promisingcoder/MetaAdsCollector.git
-cd meta-ads-collector
-pip install -e ".[dev,async,stealth]"
+cd MetaAdsCollector
+pip install -e ".[dev]"
 ```
 
 **Requirements:** Python 3.9+
+
+`curl_cffi` is installed automatically and provides Chrome-like TLS fingerprints so requests are indistinguishable from a real browser.
 
 ## Features
 
@@ -79,13 +69,13 @@ pip install -e ".[dev,async,stealth]"
 - **Media Downloads** -- download images, videos, and thumbnails from ad creatives
 - **Ad Enrichment** -- fetch additional detail data from the ad snapshot endpoint
 - **Events & Webhooks** -- 7 lifecycle events with callback registration, webhook POST integration
-- **Async Support** -- full async/await API using curl_cffi (preferred) or httpx (fallback)
+- **Async Support** -- full async/await API using curl_cffi
 - **Proxy Support** -- single proxy, proxy rotation with failure tracking and dead-proxy cooldown
 - **Structured Logging** -- text or JSON log format, optional file output
 - **Collection Reporting** -- summary statistics with throughput metrics
 - **Export Formats** -- JSON, CSV, JSONL
 - **Stream Mode** -- yield lifecycle events alongside ads through a single iterator
-- **Detection Avoidance** -- browser fingerprint randomization, TLS fingerprint impersonation (via `curl_cffi`), dynamic token extraction, session management
+- **Detection Avoidance** -- browser fingerprint randomization, Chrome TLS fingerprint impersonation via `curl_cffi`, dynamic token extraction, session management
 
 ---
 
@@ -381,14 +371,6 @@ with MetaAdsCollector() as collector:
 
 Full async API with the same TLS fingerprint impersonation as the sync client.
 
-```bash
-# Recommended: uses curl_cffi for TLS fingerprinting (same as sync client)
-pip install meta-ads-collector[stealth]
-
-# Alternative: uses httpx (may be detected by Facebook)
-pip install meta-ads-collector[async]
-```
-
 ```python
 import asyncio
 from meta_ads_collector.async_collector import AsyncMetaAdsCollector
@@ -405,7 +387,7 @@ async def main():
 asyncio.run(main())
 ```
 
-The async collector mirrors the sync API: `search()`, `collect()`, `collect_to_json()`, `collect_to_csv()`, `search_pages()`, `get_stats()`. When `curl_cffi` is installed, the async client uses `curl_cffi.AsyncSession` with Chrome TLS impersonation. Otherwise it falls back to `httpx.AsyncClient`.
+The async collector mirrors the sync API: `search()`, `collect()`, `collect_to_json()`, `collect_to_csv()`, `search_pages()`, `get_stats()`. The async client uses `curl_cffi.AsyncSession` with Chrome TLS impersonation.
 
 ---
 
@@ -718,7 +700,7 @@ All exceptions inherit from `MetaAdsError`.
 ## Development
 
 ```bash
-# Install with dev dependencies
+# Install with dev dependencies (curl_cffi is included automatically)
 pip install -e ".[dev]"
 
 # Run tests

@@ -12,7 +12,9 @@ import logging
 import time
 from typing import Any, Callable, TypeVar
 
-import requests
+from curl_cffi.requests.exceptions import ConnectionError as CffiConnectionError
+from curl_cffi.requests.exceptions import HTTPError as CffiHTTPError
+from curl_cffi.requests.exceptions import Timeout as CffiTimeout
 
 logger = logging.getLogger(__name__)
 
@@ -20,9 +22,9 @@ F = TypeVar("F", bound=Callable[..., Any])
 
 # Exception types that are considered transient and worth retrying.
 _TRANSIENT_EXCEPTIONS = (
-    requests.exceptions.ConnectionError,
-    requests.exceptions.Timeout,
-    requests.exceptions.HTTPError,
+    CffiConnectionError,
+    CffiTimeout,
+    CffiHTTPError,
     ConnectionError,
     TimeoutError,
     OSError,

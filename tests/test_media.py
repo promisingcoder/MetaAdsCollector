@@ -3,7 +3,10 @@
 from unittest.mock import MagicMock, patch
 
 import pytest
-import requests
+from curl_cffi.requests import Session as CffiSession
+from curl_cffi.requests.exceptions import ConnectionError as CffiConnectionError
+from curl_cffi.requests.exceptions import HTTPError as CffiHTTPError
+from curl_cffi.requests.exceptions import Timeout as CffiTimeout
 
 from meta_ads_collector.media import (
     MediaDownloader,
@@ -29,7 +32,7 @@ def tmp_output_dir(tmp_path):
 @pytest.fixture
 def downloader(tmp_output_dir):
     """Provide a MediaDownloader with a mocked session."""
-    session = MagicMock(spec=requests.Session)
+    session = MagicMock()
     return MediaDownloader(
         output_dir=tmp_output_dir,
         session=session,
@@ -252,13 +255,13 @@ class TestMediaDownloaderInit:
         assert new_dir.is_dir()
 
     def test_uses_provided_session(self, tmp_output_dir):
-        session = MagicMock(spec=requests.Session)
+        session = MagicMock()
         dl = MediaDownloader(output_dir=tmp_output_dir, session=session)
         assert dl.session is session
 
     def test_creates_own_session_when_none(self, tmp_output_dir):
         dl = MediaDownloader(output_dir=tmp_output_dir)
-        assert isinstance(dl.session, requests.Session)
+        assert isinstance(dl.session, CffiSession)
 
     def test_default_params(self, tmp_output_dir):
         dl = MediaDownloader(output_dir=tmp_output_dir)
@@ -322,7 +325,7 @@ class TestNeverRaises:
     def test_malformed_url_does_not_propagate(self, downloader, tmp_output_dir):
         """A completely broken URL should not propagate exceptions."""
         # Make session.get raise a connection error
-        downloader.session.get.side_effect = requests.exceptions.ConnectionError("DNS resolution failed")
+        downloader.session.get.side_effect = CffiConnectionError("DNS resolution failed")
 
         success, error, size = downloader._download_file(
             "https://not-a-real-host.invalid/file.jpg",
@@ -333,7 +336,7 @@ class TestNeverRaises:
         assert "Connection error" in error
 
     def test_timeout_does_not_propagate(self, downloader, tmp_output_dir):
-        downloader.session.get.side_effect = requests.exceptions.Timeout("Read timed out")
+        downloader.session.get.side_effect = CffiTimeout("Read timed out")
 
         success, error, size = downloader._download_file(
             "https://slow-server.example.com/file.jpg",
@@ -372,9 +375,9 @@ class TestNeverRaises:
         """403 (expired CDN URL) should return failure immediately without retrying."""
         mock_response = MagicMock()
         mock_response.status_code = 403
-        mock_response.raise_for_status.side_effect = requests.exceptions.HTTPError(
-            response=mock_response
-        )
+        http_error = CffiHTTPError("403 Forbidden")
+        http_error.response = mock_response
+        mock_response.raise_for_status.side_effect = http_error
         downloader.session.get.return_value = mock_response
 
         success, error, size = downloader._download_file(
@@ -396,7 +399,7 @@ class TestNeverRaises:
 
     def test_download_ad_media_with_all_failures(self, downloader, ad_with_media):
         """All downloads fail but we get structured results, not exceptions."""
-        downloader.session.get.side_effect = requests.exceptions.ConnectionError("offline")
+        downloader.session.get.side_effect = CffiConnectionError("offline")
 
         results = downloader.download_ad_media(ad_with_media)
         assert isinstance(results, list)
@@ -542,9 +545,9 @@ class TestSuccessfulDownload:
         # First attempt: 500 error, second attempt: success
         error_response = MagicMock()
         error_response.status_code = 500
-        error_response.raise_for_status.side_effect = requests.exceptions.HTTPError(
-            response=error_response
-        )
+        http_error = CffiHTTPError("500 Server Error")
+        http_error.response = error_response
+        error_response.raise_for_status.side_effect = http_error
 
         success_response = MagicMock()
         success_response.status_code = 200
@@ -604,7 +607,7 @@ class TestDownloadAdMedia:
             nonlocal call_count
             call_count += 1
             if call_count % 2 == 0:
-                raise requests.exceptions.ConnectionError("fail")
+                raise CffiConnectionError("fail")
             resp = MagicMock()
             resp.status_code = 200
             resp.headers = {"Content-Type": "image/jpeg"}

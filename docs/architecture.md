@@ -28,7 +28,7 @@ This document describes the internal architecture of `meta-ads-collector`. It is
 | Module | Layer | Responsibility |
 |---|---|---|
 | `collector.py` | Collector | High-level search, pagination, export, media, enrichment |
-| `async_collector.py` | Collector | Async mirror of `collector.py` using `httpx` |
+| `async_collector.py` | Collector | Async mirror of `collector.py` using `curl_cffi` |
 | `client.py` | Client | Session management, token extraction, GraphQL requests |
 | `async_client.py` | Client | Async mirror of `client.py`, delegates logic to sync client |
 | `models.py` | Data | `Ad`, `AdCreative`, `PageInfo`, `PageSearchResult`, etc. |
@@ -172,9 +172,9 @@ Sessions become stale after `MAX_SESSION_AGE` (30 minutes by default). Before ea
 
 `_refresh_session()` performs a full re-initialization:
 
-1. Close the old session (`requests.Session` or `curl_cffi.requests.Session`)
+1. Close the old session (`curl_cffi.requests.Session`)
 2. Generate a new `BrowserFingerprint`
-3. Create a fresh session with new headers (preferring `curl_cffi` when available)
+3. Create a fresh session with new headers
 4. Re-run `initialize()` to get new tokens
 5. Track consecutive refresh failures to prevent infinite loops
 
@@ -204,7 +204,7 @@ All headers derived from the fingerprint are self-consistent -- the Chrome versi
 
 ### TLS Fingerprint Impersonation
 
-When the optional `curl_cffi` dependency is installed (`pip install meta-ads-collector[stealth]`), the client uses `curl_cffi.requests.Session(impersonate="chrome")` instead of `requests.Session`. This provides Chrome-like TLS fingerprints (JA3/JA4) at the connection level, making requests indistinguishable from a real Chrome browser to TLS-based bot detection systems. If `curl_cffi` is not installed, the library falls back to `requests.Session` transparently.
+The client uses `curl_cffi.requests.Session(impersonate="chrome")` which provides Chrome-like TLS fingerprints (JA3/JA4) at the connection level, making requests indistinguishable from a real Chrome browser to TLS-based bot detection systems.
 
 ### Request Mimicry
 
@@ -265,7 +265,7 @@ Seven lifecycle events:
 self._logic = MetaAdsClient.__new__(MetaAdsClient)  # No __init__ call
 ```
 
-All pure-logic methods (token extraction, payload building, response parsing) are delegated to `_logic`. Only HTTP methods are reimplemented using `curl_cffi.AsyncSession` (preferred) or `httpx.AsyncClient` (fallback). The async client also handles Facebook's 403 verification challenges automatically, matching the sync client's behavior.
+All pure-logic methods (token extraction, payload building, response parsing) are delegated to `_logic`. Only HTTP methods are reimplemented using `curl_cffi.AsyncSession`. The async client also handles Facebook's 403 verification challenges automatically, matching the sync client's behavior.
 
 `AsyncMetaAdsCollector` mirrors `MetaAdsCollector` method-for-method, using `async def` and `async for` throughout.
 

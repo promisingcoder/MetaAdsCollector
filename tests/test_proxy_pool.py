@@ -263,7 +263,7 @@ class TestProxyPoolUtils:
         assert "total=2" in r
         assert "alive=2" in r
 
-    def test_get_requests_proxies(self):
+    def test_get_proxy_dict(self):
         pool = ProxyPool(["1.2.3.4:8080"])
-        d = pool.get_requests_proxies("http://1.2.3.4:8080")
+        d = pool.get_proxy_dict("http://1.2.3.4:8080")
         assert d == {"http": "http://1.2.3.4:8080", "https": "http://1.2.3.4:8080"}

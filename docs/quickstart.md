@@ -8,11 +8,7 @@ Get from zero to collecting ads in under 60 seconds.
 pip install meta-ads-collector
 ```
 
-For stealth TLS fingerprinting (recommended for production use):
-
-```bash
-pip install meta-ads-collector[stealth]
-```
+This installs `curl_cffi` automatically, providing Chrome-like TLS fingerprinting so requests are indistinguishable from a real browser.
 
 ## Python API
 
@@ -89,6 +85,6 @@ meta-ads-collector -q "test" --proxy "host:port:user:pass" -o ads.json
 - [Deduplication guide](deduplication.md) -- avoid collecting the same ad twice
 - [Media downloads](media.md) -- download images and videos from ad creatives
 - [Events & webhooks](events.md) -- react to collection lifecycle events
-- [Async usage](async.md) -- use with asyncio (curl_cffi or httpx)
+- [Async usage](async.md) -- use with asyncio
 - [Proxy configuration](proxy.md) -- proxy rotation and failure handling
 - [CLI reference](cli.md) -- complete list of CLI flags

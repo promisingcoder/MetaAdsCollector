@@ -19,7 +19,7 @@ from datetime import datetime, timezone
 from unittest.mock import MagicMock, patch
 
 import pytest
-import requests
+from curl_cffi.requests import Session as CffiSession
 
 from meta_ads_collector.client import MetaAdsClient
 from meta_ads_collector.collector import MetaAdsCollector
@@ -256,7 +256,7 @@ class TestClientContextManager:
     def test_enter_returns_self(self):
         """__enter__ should return the client instance."""
         client = MetaAdsClient.__new__(MetaAdsClient)
-        client.session = requests.Session()
+        client.session = CffiSession(impersonate="chrome")
         client._initialized = False
         result = client.__enter__()
         assert result is client
@@ -265,7 +265,7 @@ class TestClientContextManager:
     def test_exit_closes_session(self):
         """__exit__ should close the session and mark as uninitialized."""
         client = MetaAdsClient.__new__(MetaAdsClient)
-        client.session = requests.Session()
+        client.session = CffiSession(impersonate="chrome")
         client._initialized = True
         client.__exit__(None, None, None)
         assert client._initialized is False
@@ -1093,7 +1093,7 @@ class TestMediaEdgeCases:
 
     def test_download_file_empty_response_retries(self, tmp_path):
         """Empty download (0 bytes) should retry."""
-        session = MagicMock(spec=requests.Session)
+        session = MagicMock()
         downloader = MediaDownloader(output_dir=tmp_path, session=session, max_retries=2)
 
         # Both attempts return empty content

@@ -242,9 +242,9 @@ class TestClientSearchPages:
         assert pages[0]["page_id"] == "111"
 
     def test_search_pages_handles_network_error(self):
-        import requests as req
+        from curl_cffi.requests.exceptions import ConnectionError as CffiConnectionError
         client = self._build_mock_client()
-        client.session.request.side_effect = req.exceptions.ConnectionError("Network error")
+        client.session.request.side_effect = CffiConnectionError("Network error")
 
         pages = client.search_pages("Test", "US")
         assert pages == []

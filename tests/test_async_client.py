@@ -2,17 +2,10 @@
 
 from __future__ import annotations
 
-import importlib.util
 import inspect
 from unittest.mock import AsyncMock, MagicMock
 
 import pytest
-
-# Skip all tests if httpx is not installed
-HAS_HTTPX = importlib.util.find_spec("httpx") is not None
-
-pytestmark = pytest.mark.skipif(not HAS_HTTPX, reason="httpx not installed")
-
 
 # ---------------------------------------------------------------------------
 # Import guard
@@ -20,7 +13,7 @@ pytestmark = pytest.mark.skipif(not HAS_HTTPX, reason="httpx not installed")
 
 
 class TestImportGuard:
-    def test_async_client_importable_when_httpx_present(self):
+    def test_async_client_importable(self):
         from meta_ads_collector.async_client import AsyncMetaAdsClient
         assert AsyncMetaAdsClient is not None
 
@@ -263,8 +256,6 @@ class TestAsyncSearchAds403Handling:
     @pytest.mark.asyncio
     async def test_search_ads_refreshes_on_403(self):
         """search_ads calls _async_refresh_session on HTTP 403."""
-        import httpx
-
         from meta_ads_collector.async_client import AsyncMetaAdsClient
 
         client = AsyncMetaAdsClient()
@@ -278,10 +269,10 @@ class TestAsyncSearchAds403Handling:
         client._logic._request_counter = 0
 
         # First call returns 403, second returns 200 with valid data
-        response_403 = MagicMock(spec=httpx.Response)
+        response_403 = MagicMock()
         response_403.status_code = 403
 
-        response_200 = MagicMock(spec=httpx.Response)
+        response_200 = MagicMock()
         response_200.status_code = 200
         response_200.text = (
             '{"data":{"ad_library_main":{"search_results_connection":'
@@ -308,8 +299,6 @@ class TestAsyncSearchAds403Handling:
     @pytest.mark.asyncio
     async def test_search_ads_stale_session_triggers_refresh(self):
         """search_ads proactively refreshes when session is stale."""
-        import httpx
-
         from meta_ads_collector.async_client import AsyncMetaAdsClient
 
         client = AsyncMetaAdsClient()
@@ -322,7 +311,7 @@ class TestAsyncSearchAds403Handling:
         client._logic._doc_ids = client._doc_ids
         client._logic._request_counter = 0
 
-        response_200 = MagicMock(spec=httpx.Response)
+        response_200 = MagicMock()
         response_200.status_code = 200
         response_200.text = (
             '{"data":{"ad_library_main":{"search_results_connection":'

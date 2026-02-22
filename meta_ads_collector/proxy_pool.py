@@ -199,8 +199,8 @@ class ProxyPool:
         self._index = 0
         logger.info("ProxyPool reset: all proxies revived")
 
-    def get_requests_proxies(self, proxy_url: str) -> dict[str, str]:
-        """Convert a proxy URL into a dict suitable for ``requests``.
+    def get_proxy_dict(self, proxy_url: str) -> dict[str, str]:
+        """Convert a proxy URL into a proxy dict.
 
         Args:
             proxy_url: A proxy URL string.

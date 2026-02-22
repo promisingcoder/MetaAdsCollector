@@ -1,12 +1,8 @@
 """Async collector for Meta Ad Library.
 
 Mirrors :class:`~meta_ads_collector.collector.MetaAdsCollector` method-for-
-method but uses ``async`` / ``await`` throughout.
-
-Requires either ``curl_cffi`` (recommended) or ``httpx``::
-
-    pip install meta-ads-collector[stealth]   # curl_cffi
-    pip install meta-ads-collector[async]     # httpx
+method but uses ``async`` / ``await`` throughout.  Uses
+``curl_cffi.requests.AsyncSession`` with Chrome TLS impersonation.
 """
 
 from __future__ import annotations

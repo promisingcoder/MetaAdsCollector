@@ -11,7 +11,7 @@ import logging
 import time
 from typing import Any, Callable
 
-import requests
+from curl_cffi.requests import Session as CffiSession
 
 from .events import AD_COLLECTED, Event
 
@@ -50,7 +50,7 @@ class WebhookSender:
         self.batch_size = batch_size
         self.timeout = timeout
         self._buffer: list[dict[str, Any]] = []
-        self._session = requests.Session()
+        self._session: Any = CffiSession(impersonate="chrome")
 
     def send(self, data: dict[str, Any]) -> bool:
         """POST a single JSON payload to the webhook URL.

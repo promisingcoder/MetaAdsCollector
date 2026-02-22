@@ -14,16 +14,8 @@ import time
 from typing import Any, Optional, Union
 from urllib.parse import quote
 
-import requests
-
-# Prefer curl_cffi for TLS fingerprint impersonation (mimics real Chrome
-# JA3/JA4 handshake).  Falls back to plain ``requests`` when unavailable.
-try:
-    from curl_cffi.requests import Session as CffiSession
-
-    _HAS_CURL_CFFI = True
-except ImportError:
-    _HAS_CURL_CFFI = False
+from curl_cffi.requests import Session as CffiSession
+from curl_cffi.requests.exceptions import RequestException as CffiRequestException
 
 from .constants import (
     CHROME_FULL_VERSION,
@@ -153,17 +145,9 @@ class MetaAdsClient:
         # Generate a randomised browser fingerprint for this session
         self._fingerprint: BrowserFingerprint = generate_fingerprint()
 
-        # Session state -- prefer curl_cffi for realistic TLS fingerprints
-        self.session: Any  # requests.Session or curl_cffi Session
-        if _HAS_CURL_CFFI:
-            self.session = CffiSession(impersonate="chrome")
-            logger.debug("Using curl_cffi session with Chrome TLS impersonation")
-        else:
-            self.session = requests.Session()
-            logger.debug(
-                "curl_cffi not installed -- using plain requests "
-                "(TLS fingerprint will look like Python, not Chrome)"
-            )
+        # Session state -- curl_cffi provides Chrome-like TLS fingerprints
+        self.session: Any = CffiSession(impersonate="chrome")
+        logger.debug("Using curl_cffi session with Chrome TLS impersonation")
         self._tokens: dict[str, str] = {}
         self._doc_ids: dict[str, str] = {}
         self._initialized = False
@@ -459,11 +443,8 @@ class MetaAdsClient:
         self.session.close()
         # Generate a fresh fingerprint for the new session
         self._fingerprint = generate_fingerprint()
-        # Create new session (prefer curl_cffi for TLS impersonation)
-        if _HAS_CURL_CFFI:
-            self.session = CffiSession(impersonate="chrome")
-        else:
-            self.session = requests.Session()
+        # Create new session with Chrome TLS impersonation
+        self.session = CffiSession(impersonate="chrome")
         self.session.headers.update(self._fingerprint.get_default_headers())
         self._tokens = {}
         self._initialized = False
@@ -489,7 +470,7 @@ class MetaAdsClient:
             )
             return False
 
-    def _handle_challenge(self, response: requests.Response) -> bool:
+    def _handle_challenge(self, response: Any) -> bool:
         """
         Handle Facebook's JavaScript verification challenge.
 
@@ -542,7 +523,7 @@ class MetaAdsClient:
                         timeout=self.timeout,
                     )
                     break
-                except requests.exceptions.RequestException as retry_err:
+                except CffiRequestException as retry_err:
                     logger.warning(
                         f"Challenge POST attempt {attempt + 1}/3 failed: {retry_err}"
                     )
@@ -563,8 +544,7 @@ class MetaAdsClient:
             else:
                 # Sometimes the cookie is set with different name patterns.
                 # Cookie jars may yield Cookie objects (.name) or plain
-                # strings depending on the HTTP backend (requests vs
-                # curl_cffi), so normalise to string before checking.
+                # strings, so normalise to string before checking.
                 for cookie in self.session.cookies:
                     name = cookie.name if hasattr(cookie, "name") else str(cookie)
                     if "challenge" in name.lower() or "rd_" in name.lower():
@@ -735,7 +715,7 @@ class MetaAdsClient:
         if headers:
             merged_headers.update(headers)
 
-        last_exception: Optional[requests.exceptions.RequestException] = None
+        last_exception: Optional[CffiRequestException] = None
 
         for attempt in range(self.max_retries):
             # Rotate proxy from pool if available
@@ -743,13 +723,13 @@ class MetaAdsClient:
             if self._proxy_pool is not None:
                 proxy_url = self._proxy_pool.get_next()
                 self._current_proxy = proxy_url
-                self.session.proxies = self._proxy_pool.get_requests_proxies(
+                self.session.proxies = self._proxy_pool.get_proxy_dict(  # type: ignore[assignment]
                     proxy_url
                 )
 
             try:
                 response = self.session.request(
-                    method=method,
+                    method=method,  # type: ignore[arg-type]
                     url=url,
                     params=params,
                     data=data,
@@ -773,7 +753,7 @@ class MetaAdsClient:
 
                 return response
 
-            except requests.exceptions.RequestException as e:
+            except CffiRequestException as e:
                 last_exception = e
                 # Mark proxy as failed
                 if self._proxy_pool and proxy_url:
@@ -784,7 +764,7 @@ class MetaAdsClient:
                 if attempt < self.max_retries - 1:
                     time.sleep(wait_time)
 
-        raise last_exception or requests.exceptions.RequestException(
+        raise last_exception or CffiRequestException(
             "Request failed after all retries"
         )
 
@@ -1230,7 +1210,7 @@ class MetaAdsClient:
 
             return self._parse_typeahead_response(data)
 
-        except (json.JSONDecodeError, requests.exceptions.RequestException) as exc:
+        except (json.JSONDecodeError, CffiRequestException) as exc:
             logger.error("Typeahead search failed: %s", exc)
             return []
 

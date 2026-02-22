@@ -22,7 +22,7 @@ source .venv/bin/activate  # Linux/macOS
 # .venv\Scripts\activate   # Windows
 
 # Install in editable mode with all dev dependencies
-pip install -e ".[dev,async,stealth]"
+pip install -e ".[dev]"
 ```
 
 Or use the Makefile:
@@ -35,10 +35,8 @@ make install-dev
 
 | Group | What it includes | When to install |
 |---|---|---|
-| (none) | `requests>=2.28.0` | Always (core dependency) |
-| `async` | `httpx>=0.24.0` | Async fallback when curl_cffi is unavailable |
-| `stealth` | `curl_cffi>=0.7.0` | TLS fingerprint impersonation for sync and async clients (recommended) |
-| `dev` | `pytest`, `pytest-cov`, `pytest-asyncio`, `ruff`, `mypy`, `types-requests` | Always for development |
+| (none) | `curl_cffi>=0.7.0` | Always (core dependency, provides Chrome TLS fingerprinting) |
+| `dev` | `pytest`, `pytest-cov`, `pytest-asyncio`, `ruff`, `mypy` | Always for development |
 
 ## Running Tests
 

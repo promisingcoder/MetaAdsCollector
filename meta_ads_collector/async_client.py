@@ -1,16 +1,7 @@
 """Async HTTP client for Meta Ad Library.
 
-Prefers ``curl_cffi.requests.AsyncSession`` for TLS fingerprint
-impersonation (same approach as the sync client).  Falls back to
-``httpx.AsyncClient`` when ``curl_cffi`` is not installed.
-
-Install the async extra for httpx-only usage::
-
-    pip install meta-ads-collector[async]
-
-Install the stealth extra for curl_cffi (recommended)::
-
-    pip install meta-ads-collector[stealth]
+Uses ``curl_cffi.requests.AsyncSession`` with Chrome TLS fingerprint
+impersonation -- the same approach as the sync client.
 """
 
 from __future__ import annotations
@@ -20,6 +11,8 @@ import logging
 import random
 import time
 from typing import Any
+
+from curl_cffi.requests import AsyncSession as CffiAsyncSession
 
 from .client import MetaAdsClient
 from .constants import (
@@ -39,64 +32,15 @@ from .exceptions import (
 from .fingerprint import BrowserFingerprint, generate_fingerprint
 from .proxy_pool import ProxyPool
 
-# ---------------------------------------------------------------------------
-# Transport selection: prefer curl_cffi for TLS fingerprint impersonation,
-# fall back to httpx.
-# ---------------------------------------------------------------------------
-_HAS_CURL_CFFI = False
-_HAS_HTTPX = False
-
-try:
-    import curl_cffi.requests as _curl_cffi_requests
-
-    _HAS_CURL_CFFI = True
-except ImportError:
-    _curl_cffi_requests = None  # type: ignore[assignment]
-
-if not _HAS_CURL_CFFI:
-    try:
-        import httpx as _httpx
-
-        _HAS_HTTPX = True
-    except ImportError:
-        _httpx = None  # type: ignore[assignment]
-else:
-    _httpx = None  # type: ignore[assignment]
-
-if not _HAS_CURL_CFFI and not _HAS_HTTPX:
-    raise ImportError(
-        "Async support requires either curl_cffi or httpx. "
-        "Install one of:\n"
-        "  pip install meta-ads-collector[stealth]   # curl_cffi (recommended)\n"
-        "  pip install meta-ads-collector[async]     # httpx"
-    )
-
 logger = logging.getLogger(__name__)
-
-
-# ---------------------------------------------------------------------------
-# Thin response wrapper so both backends expose the same interface.
-# ---------------------------------------------------------------------------
-
-class _AsyncResponse:
-    """Uniform response wrapper for both curl_cffi and httpx responses."""
-
-    __slots__ = ("status_code", "text", "headers")
-
-    def __init__(self, status_code: int, text: str, headers: Any) -> None:
-        self.status_code = status_code
-        self.text = text
-        self.headers = headers
 
 
 class AsyncMetaAdsClient:
     """Async HTTP client for the Meta Ad Library.
 
     Mirrors the public API of :class:`~meta_ads_collector.client.MetaAdsClient`
-    but uses asynchronous I/O.  When ``curl_cffi`` is installed the client
-    uses ``curl_cffi.requests.AsyncSession`` with Chrome TLS impersonation
-    (identical to the sync client).  Otherwise it falls back to
-    ``httpx.AsyncClient``.
+    but uses asynchronous I/O with ``curl_cffi.requests.AsyncSession`` and
+    Chrome TLS impersonation.
 
     Supports ``async with`` for resource cleanup::
 
@@ -150,9 +94,6 @@ class AsyncMetaAdsClient:
         self._initialized = False
         self._init_time: float | None = None
 
-        # Which backend are we using?
-        self._use_curl_cffi = _HAS_CURL_CFFI
-
         # Proxy configuration
         self._proxy_pool: ProxyPool | None = None
         self._proxy_string: str | None = None
@@ -169,40 +110,22 @@ class AsyncMetaAdsClient:
         self._client: Any = None  # lazily set by _build_client
         self._build_client()
 
-        if self._use_curl_cffi:
-            logger.debug("Async client using curl_cffi with Chrome TLS impersonation")
-        else:
-            logger.debug(
-                "curl_cffi not installed -- async client using httpx "
-                "(TLS fingerprint will look like Python, not Chrome)"
-            )
+        logger.debug("Async client using curl_cffi with Chrome TLS impersonation")
 
     # ------------------------------------------------------------------
     # Client construction helpers
     # ------------------------------------------------------------------
 
     def _build_client(self, proxy_url: str | None = None) -> None:
-        """Create the async HTTP client (curl_cffi or httpx)."""
+        """Create the async HTTP client."""
         if proxy_url is None and self._proxy_string:
             proxy_url = self._format_proxy_url(self._proxy_string)
 
-        if self._use_curl_cffi:
-            kwargs: dict[str, Any] = {"impersonate": "chrome"}
-            if proxy_url:
-                kwargs["proxy"] = proxy_url
-            self._client = _curl_cffi_requests.AsyncSession(**kwargs)
-            # Set default headers
-            self._client.headers.update(self._fingerprint.get_default_headers())
-        else:
-            transport_kwargs: dict[str, Any] = {}
-            if proxy_url:
-                transport_kwargs["proxy"] = proxy_url
-            self._client = _httpx.AsyncClient(
-                headers=self._fingerprint.get_default_headers(),
-                timeout=_httpx.Timeout(self.timeout),
-                follow_redirects=True,
-                **transport_kwargs,
-            )
+        kwargs: dict[str, Any] = {"impersonate": "chrome"}
+        if proxy_url:
+            kwargs["proxy"] = proxy_url
+        self._client = CffiAsyncSession(**kwargs)
+        self._client.headers.update(self._fingerprint.get_default_headers())
 
     @staticmethod
     def _format_proxy_url(proxy: str) -> str:
@@ -276,10 +199,7 @@ class AsyncMetaAdsClient:
         """Close the underlying async client."""
         if self._client is None:
             return
-        if self._use_curl_cffi:
-            await self._client.close()
-        else:
-            await self._client.aclose()
+        await self._client.close()
 
     async def _async_refresh_session(self) -> bool:
         """Re-initialize the session when cookies/tokens become stale.
@@ -354,16 +274,11 @@ class AsyncMetaAdsClient:
         params: dict[str, Any] | None = None,
         data: dict[str, Any] | None = None,
         headers: dict[str, str] | None = None,
-    ) -> _AsyncResponse:
-        """Make an async HTTP request with retry logic.
-
-        Returns a uniform :class:`_AsyncResponse` regardless of backend.
-        """
+    ) -> Any:
+        """Make an async HTTP request with retry logic."""
         import asyncio
 
-        merged_headers = (
-            dict(self._client.headers) if hasattr(self._client, "headers") else {}
-        )
+        merged_headers = dict(self._client.headers)
         if headers:
             merged_headers.update(headers)
 
@@ -379,35 +294,16 @@ class AsyncMetaAdsClient:
                     await self._rebuild_client(pool_proxy)
 
             try:
-                if self._use_curl_cffi:
-                    response = await self._client.request(
-                        method,
-                        url,
-                        params=params,
-                        data=data,
-                        headers=merged_headers,
-                        timeout=self.timeout,
-                    )
-                    wrapped = _AsyncResponse(
-                        status_code=response.status_code,
-                        text=response.text,
-                        headers=response.headers,
-                    )
-                else:
-                    response = await self._client.request(
-                        method=method,
-                        url=url,
-                        params=params,
-                        data=data,
-                        headers=merged_headers,
-                    )
-                    wrapped = _AsyncResponse(
-                        status_code=response.status_code,
-                        text=response.text,
-                        headers=response.headers,
-                    )
+                response = await self._client.request(
+                    method,
+                    url,
+                    params=params,
+                    data=data,
+                    headers=merged_headers,
+                    timeout=self.timeout,
+                )
 
-                if wrapped.status_code == 429:
+                if response.status_code == 429:
                     if self._proxy_pool and pool_proxy:
                         self._proxy_pool.mark_failure(pool_proxy)
                     wait_time = self.retry_delay * (2 ** attempt) + random.uniform(0, 1)
@@ -419,7 +315,7 @@ class AsyncMetaAdsClient:
                 if self._proxy_pool and pool_proxy:
                     self._proxy_pool.mark_success(pool_proxy)
 
-                return wrapped
+                return response
 
             except Exception as exc:
                 last_exception = exc
@@ -438,7 +334,7 @@ class AsyncMetaAdsClient:
             raise last_exception
         raise MetaAdsError("Request failed after all retries")
 
-    async def _handle_challenge(self, response: _AsyncResponse) -> bool:
+    async def _handle_challenge(self, response: Any) -> bool:
         """Handle Facebook's JavaScript verification challenge (async).
 
         Facebook returns a page with a JS challenge that POSTs to

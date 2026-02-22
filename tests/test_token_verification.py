@@ -4,7 +4,7 @@ import logging
 from unittest.mock import MagicMock, patch
 
 import pytest
-import requests
+from curl_cffi.requests.exceptions import ConnectionError as CffiConnectionError
 
 from meta_ads_collector.client import MetaAdsClient
 from meta_ads_collector.exceptions import AuthenticationError
@@ -77,7 +77,7 @@ class TestChallengeHandler:
     def test_returns_false_when_no_challenge_url(self):
         """If no challenge URL pattern is found, returns False."""
         client = self._make_challenge_client()
-        mock_response = MagicMock(spec=requests.Response)
+        mock_response = MagicMock()
         mock_response.text = "<html><body>No challenge here</body></html>"
         assert client._handle_challenge(mock_response) is False
 
@@ -86,14 +86,14 @@ class TestChallengeHandler:
         client = self._make_challenge_client()
 
         # Build a mock initial response containing a challenge URL
-        mock_response = MagicMock(spec=requests.Response)
+        mock_response = MagicMock()
         mock_response.text = "fetch('/__rd_verify_abc123?challenge=1'"
         mock_response.url = "https://www.facebook.com/ads/library/"
 
         # Mock the session.post to set a challenge cookie
         def fake_post(*args, **kwargs):
             client.session.cookies.set("rd_challenge", "solved")
-            resp = MagicMock(spec=requests.Response)
+            resp = MagicMock()
             resp.status_code = 200
             return resp
 
@@ -105,13 +105,13 @@ class TestChallengeHandler:
         """Returns False when POST succeeds but no challenge cookie is set."""
         client = self._make_challenge_client()
 
-        mock_response = MagicMock(spec=requests.Response)
+        mock_response = MagicMock()
         mock_response.text = "fetch('/__rd_verify_abc123?challenge=1'"
         mock_response.url = "https://www.facebook.com/ads/library/"
 
         # Mock the session.post but do NOT set any cookie
         def fake_post(*args, **kwargs):
-            resp = MagicMock(spec=requests.Response)
+            resp = MagicMock()
             resp.status_code = 200
             return resp
 
@@ -123,13 +123,13 @@ class TestChallengeHandler:
         """Returns False when the challenge POST itself fails."""
         client = self._make_challenge_client()
 
-        mock_response = MagicMock(spec=requests.Response)
+        mock_response = MagicMock()
         mock_response.text = "fetch('/__rd_verify_abc123?challenge=1'"
         mock_response.url = "https://www.facebook.com/ads/library/"
 
         with patch.object(
             client.session, "post",
-            side_effect=requests.exceptions.ConnectionError("timeout"),
+            side_effect=CffiConnectionError("timeout"),
         ):
             result = client._handle_challenge(mock_response)
         assert result is False
@@ -138,13 +138,13 @@ class TestChallengeHandler:
         """Returns True when an alternate challenge-like cookie is received."""
         client = self._make_challenge_client()
 
-        mock_response = MagicMock(spec=requests.Response)
+        mock_response = MagicMock()
         mock_response.text = "fetch('/__rd_verify_xyz?challenge=5'"
         mock_response.url = "https://www.facebook.com/ads/library/"
 
         def fake_post(*args, **kwargs):
             client.session.cookies.set("rd_verification", "done")
-            resp = MagicMock(spec=requests.Response)
+            resp = MagicMock()
             resp.status_code = 200
             return resp
 

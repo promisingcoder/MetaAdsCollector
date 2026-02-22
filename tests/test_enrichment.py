@@ -4,7 +4,8 @@ import copy
 from unittest.mock import MagicMock
 
 import pytest
-import requests
+from curl_cffi.requests.exceptions import ConnectionError as CffiConnectionError
+from curl_cffi.requests.exceptions import Timeout as CffiTimeout
 
 from meta_ads_collector.collector import MetaAdsCollector
 from meta_ads_collector.models import Ad, AdCreative, PageInfo
@@ -19,7 +20,7 @@ def mock_collector():
     """Create a MetaAdsCollector with a mocked client."""
     collector = MetaAdsCollector.__new__(MetaAdsCollector)
     collector.client = MagicMock()
-    collector.client.session = MagicMock(spec=requests.Session)
+    collector.client.session = MagicMock()
     collector.rate_limit_delay = 0
     collector.jitter = 0
     collector.stats = {
@@ -103,7 +104,7 @@ class TestEnrichAdFailureSafety:
 
     def test_returns_original_on_connection_error(self, mock_collector, basic_ad):
         """Network failures should not mutate or lose the ad."""
-        mock_collector.client.get_ad_details.side_effect = requests.exceptions.ConnectionError("offline")
+        mock_collector.client.get_ad_details.side_effect = CffiConnectionError("offline")
 
         result = mock_collector.enrich_ad(basic_ad)
 
@@ -112,7 +113,7 @@ class TestEnrichAdFailureSafety:
 
     def test_returns_original_on_timeout(self, mock_collector, basic_ad):
         """Timeout should not crash or lose data."""
-        mock_collector.client.get_ad_details.side_effect = requests.exceptions.Timeout("timed out")
+        mock_collector.client.get_ad_details.side_effect = CffiTimeout("timed out")
 
         result = mock_collector.enrich_ad(basic_ad)
 

@@ -4,7 +4,7 @@ build-backend = "setuptools.build_meta"
 
 [project]
 name = "meta-ads-collector"
-version = "1.2.0"
+version = "1.3.0"
 description = "Collect ads from the Meta (Facebook) Ad Library -- no API key required"
 readme = "README.md"
 license = "MIT"
@@ -42,23 +42,16 @@ classifiers = [
     "Typing :: Typed",
 ]
 dependencies = [
-    "requests>=2.28.0",
+    "curl_cffi>=0.7.0",
 ]
 
 [project.optional-dependencies]
-async = [
-    "httpx>=0.24.0",
-]
-stealth = [
-    "curl_cffi>=0.7.0",
-]
 dev = [
     "pytest>=7.0",
     "pytest-cov>=4.0",
     "pytest-asyncio>=0.21",
     "ruff>=0.4",
     "mypy>=1.0",
-    "types-requests",
 ]
 
 [project.scripts]

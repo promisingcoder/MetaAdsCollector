@@ -1,20 +1,14 @@
 # Async Usage Guide
 
-`meta-ads-collector` provides a full async API for use with `asyncio`. The async client uses the same TLS fingerprint impersonation as the sync client to avoid detection.
+`meta-ads-collector` provides a full async API for use with `asyncio`. The async client uses `curl_cffi.AsyncSession` with Chrome TLS fingerprint impersonation, matching the sync client's behavior.
 
 ## Installation
 
-The async client uses `curl_cffi` (recommended) for TLS fingerprint impersonation, or falls back to `httpx`:
+Async support is included out of the box -- no extra install required:
 
 ```bash
-# Recommended: uses curl_cffi (same TLS fingerprinting as sync client)
-pip install meta-ads-collector[stealth]
-
-# Alternative: uses httpx (may get blocked by Facebook's TLS fingerprint detection)
-pip install meta-ads-collector[async]
+pip install meta-ads-collector
 ```
-
-If both `curl_cffi` and `httpx` are installed, `curl_cffi` is preferred automatically.
 
 ## AsyncMetaAdsCollector
 
@@ -141,7 +135,7 @@ async with AsyncMetaAdsClient() as client:
 
 ## Notes
 
-- The async client prefers `curl_cffi.AsyncSession` for TLS fingerprint impersonation, falling back to `httpx.AsyncClient` if curl_cffi is not installed
+- The async client uses `curl_cffi.AsyncSession` with Chrome TLS fingerprint impersonation
 - Facebook's 403 verification challenges are handled automatically (same as the sync client)
 - Rate limiting uses `asyncio.sleep()` instead of `time.sleep()`
 - Session initialization is performed asynchronously on the first request

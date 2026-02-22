@@ -120,7 +120,7 @@ pool.reset()
 | `reset()` | Revive all proxies, reset all counters |
 | `alive_proxies` | List of currently usable proxy URLs |
 | `from_file(path)` | Create pool from a text file |
-| `get_requests_proxies(url)` | Convert URL to `{"http": url, "https": url}` dict |
+| `get_proxy_dict(url)` | Convert URL to `{"http": url, "https": url}` dict |
 
 ## Disabling proxies
 

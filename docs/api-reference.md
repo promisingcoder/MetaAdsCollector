@@ -173,8 +173,6 @@ Close the collector and release resources.
 
 **Module:** `meta_ads_collector.async_collector`
 
-**Requires:** `pip install meta-ads-collector[stealth]` (recommended) or `pip install meta-ads-collector[async]`
-
 ### class AsyncMetaAdsCollector
 
 Async mirror of `MetaAdsCollector`. All methods are `async def` and iterators are `async for`.
@@ -247,11 +245,9 @@ Close the session.
 
 **Module:** `meta_ads_collector.async_client`
 
-**Requires:** `pip install meta-ads-collector[stealth]` (recommended) or `pip install meta-ads-collector[async]`
-
 ### class AsyncMetaAdsClient
 
-Async mirror of `MetaAdsClient` using `curl_cffi.AsyncSession` (preferred) or `httpx.AsyncClient` (fallback). Handles Facebook's 403 verification challenges automatically. All HTTP methods are async, while pure-logic methods are delegated to the sync client.
+Async mirror of `MetaAdsClient` using `curl_cffi.AsyncSession`. Handles Facebook's 403 verification challenges automatically. All HTTP methods are async, while pure-logic methods are delegated to the sync client.
 
 Same method signatures as `MetaAdsClient` with `async def`.
 
@@ -544,7 +540,7 @@ Download images, videos, and thumbnails from ad creatives.
 | Parameter | Type | Default | Description |
 |---|---|---|---|
 | `output_dir` | `str \| Path` | (required) | Download directory |
-| `session` | `requests.Session \| None` | `None` | HTTP session to reuse |
+| `session` | `curl_cffi.requests.Session \| None` | `None` | HTTP session to reuse |
 | `timeout` | `int` | `30` | Per-request timeout |
 | `max_retries` | `int` | `2` | Retry attempts per download |
 
@@ -594,7 +590,7 @@ Round-robin proxy pool with failure tracking and cooldown recovery.
 | `mark_success(proxy)` | Record successful request |
 | `mark_failure(proxy)` | Record failed request |
 | `reset()` | Reset all counters and revive all proxies |
-| `get_requests_proxies(proxy_url) -> dict` | Convert to `requests`-compatible proxy dict |
+| `get_proxy_dict(proxy_url) -> dict` | Convert proxy URL to `{"http": url, "https": url}` dict |
 
 #### Properties
 
