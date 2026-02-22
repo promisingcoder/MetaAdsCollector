@@ -24,7 +24,6 @@ from curl_cffi.requests import Session as CffiSession
 from meta_ads_collector.client import MetaAdsClient
 from meta_ads_collector.collector import MetaAdsCollector
 from meta_ads_collector.exceptions import (
-    AuthenticationError,
     SessionExpiredError,
 )
 from meta_ads_collector.filters import FilterConfig, _strip_tz, passes_filter
@@ -162,19 +161,21 @@ class TestClientVerifyTokens:
     def _client(self) -> MetaAdsClient:
         return MetaAdsClient.__new__(MetaAdsClient)
 
-    def test_missing_lsd_raises(self):
-        """Missing LSD token should raise AuthenticationError."""
+    def test_missing_lsd_generates_fallback(self):
+        """Missing LSD token should be auto-generated."""
         client = self._client()
         client._tokens = {}
-        with pytest.raises(AuthenticationError, match="LSD token"):
-            client._verify_tokens()
+        client._verify_tokens()
+        assert "lsd" in client._tokens
+        assert len(client._tokens["lsd"]) >= 8
 
-    def test_empty_lsd_raises(self):
-        """Empty string LSD token should raise AuthenticationError."""
+    def test_empty_lsd_generates_fallback(self):
+        """Empty string LSD token should be auto-generated."""
         client = self._client()
         client._tokens = {"lsd": ""}
-        with pytest.raises(AuthenticationError, match="LSD token"):
-            client._verify_tokens()
+        client._verify_tokens()
+        assert client._tokens["lsd"]
+        assert len(client._tokens["lsd"]) >= 8
 
     def test_valid_lsd_no_optional_tokens(self):
         """Valid LSD token with missing optional tokens should not raise."""

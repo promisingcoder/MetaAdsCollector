@@ -3,11 +3,9 @@
 import logging
 from unittest.mock import MagicMock, patch
 
-import pytest
 from curl_cffi.requests.exceptions import ConnectionError as CffiConnectionError
 
 from meta_ads_collector.client import MetaAdsClient
-from meta_ads_collector.exceptions import AuthenticationError
 
 
 def _make_client() -> MetaAdsClient:
@@ -32,29 +30,30 @@ class TestVerifyTokens:
         client._tokens = {"lsd": "some_token_value", "fb_dtsg": "dtsg_value", "jazoest": "12345"}
         client._verify_tokens()  # should not raise
 
-    def test_empty_lsd_raises_authentication_error(self):
-        """An empty LSD token must raise AuthenticationError."""
+    def test_empty_lsd_generates_fallback(self):
+        """An empty LSD token should be auto-generated."""
         client = _make_bare_client()
         client._tokens = {"lsd": ""}
-        with pytest.raises(AuthenticationError, match="LSD token"):
-            client._verify_tokens()
+        client._verify_tokens()
+        assert client._tokens["lsd"]  # non-empty
+        assert len(client._tokens["lsd"]) >= 8
 
-    def test_missing_lsd_raises_authentication_error(self):
-        """A completely missing LSD token must raise AuthenticationError."""
+    def test_missing_lsd_generates_fallback(self):
+        """A completely missing LSD token should be auto-generated."""
         client = _make_bare_client()
         client._tokens = {"fb_dtsg": "something"}
-        with pytest.raises(AuthenticationError, match="LSD token"):
-            client._verify_tokens()
+        client._verify_tokens()
+        assert "lsd" in client._tokens
+        assert len(client._tokens["lsd"]) >= 8
 
-    def test_missing_optional_tokens_log_warnings(self, caplog):
-        """Missing optional tokens should produce log warnings but not raise."""
+    def test_missing_optional_tokens_auto_generated(self):
+        """Missing optional tokens should be auto-generated, not just warned."""
         client = _make_bare_client()
         client._tokens = {"lsd": "valid_token"}
-        with caplog.at_level(logging.WARNING, logger="meta_ads_collector.client"):
-            client._verify_tokens()
-        # Should warn about fb_dtsg and jazoest
-        assert "fb_dtsg" in caplog.text
-        assert "jazoest" in caplog.text
+        client._verify_tokens()
+        assert "fb_dtsg" in client._tokens
+        assert "jazoest" in client._tokens
+        assert len(client._tokens["fb_dtsg"]) >= 20
 
     def test_all_tokens_present_no_warnings(self, caplog):
         """When all optional tokens are present, no warnings should be logged."""
