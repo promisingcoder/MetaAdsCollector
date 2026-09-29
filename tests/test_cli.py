@@ -7,6 +7,7 @@ help output, missing required arguments, invalid output formats, and the
 
 from __future__ import annotations
 
+import io
 import subprocess
 import sys
 from unittest.mock import patch
@@ -14,6 +15,7 @@ from unittest.mock import patch
 import pytest
 
 from meta_ads_collector.cli import (
+    _console_print,
     main,
     map_ad_type,
     map_search_type,
@@ -21,6 +23,17 @@ from meta_ads_collector.cli import (
     map_status,
     parse_args,
 )
+
+
+def test_console_print_escapes_text_not_supported_by_console() -> None:
+    class AsciiOutput(io.StringIO):
+        encoding = "ascii"
+
+    output = AsciiOutput()
+    with patch("meta_ads_collector.cli.sys.stdout", output):
+        _console_print("München 🐈")
+
+    assert output.getvalue() == r"M\xfcnchen \U0001f408" + "\n"
 
 
 class TestArgParsing:

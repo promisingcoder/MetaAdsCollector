@@ -522,6 +522,14 @@ def _configure_proxy(args: argparse.Namespace):
     return None
 
 
+def _console_print(*values: object, sep: str = " ", end: str = "\n") -> None:
+    """Print text without failing on characters unsupported by the console."""
+    text = sep.join(str(value) for value in values) + end
+    encoding = getattr(sys.stdout, "encoding", None) or "utf-8"
+    safe_text = text.encode(encoding, errors="backslashreplace").decode(encoding)
+    sys.stdout.write(safe_text)
+
+
 def _run_search_pages(args: argparse.Namespace) -> int:
     """Execute the --search-pages mode and print results."""
     import json as _json
@@ -541,20 +549,20 @@ def _run_search_pages(args: argparse.Namespace) -> int:
             )
 
             if not pages:
-                print(f"No pages found for query: {args.search_pages!r}")
+                _console_print(f"No pages found for query: {args.search_pages!r}")
                 return 0
 
-            print(f"Found {len(pages)} page(s):\n")
+            _console_print(f"Found {len(pages)} page(s):\n")
             for page in pages:
-                print(f"  Page ID:  {page.page_id}")
-                print(f"  Name:     {page.page_name}")
+                _console_print(f"  Page ID:  {page.page_id}")
+                _console_print(f"  Name:     {page.page_name}")
                 if page.page_profile_uri:
-                    print(f"  URL:      {page.page_profile_uri}")
+                    _console_print(f"  URL:      {page.page_profile_uri}")
                 if page.category:
-                    print(f"  Category: {page.category}")
+                    _console_print(f"  Category: {page.category}")
                 if page.page_like_count is not None:
-                    print(f"  Likes:    {page.page_like_count:,}")
-                print()
+                    _console_print(f"  Likes:    {page.page_like_count:,}")
+                _console_print()
 
             # Also write JSON to output if specified
             if args.output:
