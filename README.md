@@ -9,6 +9,10 @@
 
 `meta-ads-collector` reverse-engineers Meta's internal GraphQL API to give you programmatic access to **all ad types** in **all countries** -- commercial ads, political ads, housing, employment, credit -- with full creative content, spend data, impression ranges, and audience demographics.
 
+## About
+
+MetaAdsCollector is a Python package published on [PyPI](https://pypi.org/project/meta-ads-collector/). Read the [full documentation](https://github.com/promisingcoder/MetaAdsCollector/tree/main/docs), including the [beginner's guide](https://github.com/promisingcoder/MetaAdsCollector/blob/main/docs/quickstart.md).
+
 ## Why not the official API?
 
 | Feature | meta-ads-collector | Official Meta Ad Library API |
@@ -24,6 +28,41 @@
 | Setup time | **< 60 seconds** | Days to weeks |
 
 ## Quick Start
+
+### Beginner's quick start (no programming required)
+
+Follow these steps to collect ads into a spreadsheet. You do not need to write or understand any code.
+
+1. **Install Python.** Download Python from [python.org/downloads](https://www.python.org/downloads/). On Windows, check **"Add Python to PATH"** in the installer before selecting **Install Now**.
+2. **Open a command window.** On Windows, open **PowerShell** from the Start menu. On macOS, open **Terminal** from Applications → Utilities. On Linux, open your Terminal app.
+3. **Install MetaAdsCollector.** Copy the command for your system, paste it into the command window, and press Enter:
+
+   **Windows:**
+   ```powershell
+   py -m pip install --upgrade meta-ads-collector
+   ```
+
+   **macOS or Linux:**
+   ```bash
+   python3 -m pip install --upgrade meta-ads-collector
+   ```
+
+4. **Search and save results as a spreadsheet file.** Replace `solar panels` with the product, brand, or topic you want to research. Run the command for your system:
+
+   **Windows:**
+   ```powershell
+   meta-ads-collector -q "solar panels" -c US -n 25 -o ads.csv
+   ```
+
+   **macOS or Linux:**
+   ```bash
+   meta-ads-collector -q "solar panels" -c US -n 25 -o ads.csv
+   ```
+
+   This searches ads delivered in the United States and saves up to 25 results in `ads.csv` in the current folder. Change `US` to another country code, such as `GB` or `EG`, if needed.
+5. **Open the results.** Find `ads.csv` in the current folder and open it with Excel, Numbers, or another spreadsheet app.
+
+If your computer says the `meta-ads-collector` command cannot be found after installation, close and reopen the command window, then try again. For more options, see the [CLI guide](https://github.com/promisingcoder/MetaAdsCollector/blob/main/docs/cli.md).
 
 ### Python
 
