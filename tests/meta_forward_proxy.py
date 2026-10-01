@@ -9,6 +9,7 @@ from __future__ import annotations
 import base64
 import contextlib
 import ipaddress
+import logging
 import os
 import select
 import socket
@@ -18,7 +19,12 @@ import threading
 from http.server import BaseHTTPRequestHandler, ThreadingHTTPServer
 from urllib.parse import unquote, urlsplit
 
-from meta_ads_collector.proxy_pool import parse_proxy
+from meta_ads_collector.proxy_pool import _redact_proxy, parse_proxy
+
+
+def _is_meta_host(host):
+    name = host.lower().rstrip(".")
+    return name == "facebook.com" or name.endswith((".facebook.com", ".fbcdn.net"))
 
 
 def _connect_remote(host, port, upstream, server_name=None):
@@ -100,8 +106,11 @@ class MetaForwardProxy:
                         self.end_headers()
                         return
                 host, separator, port = self.path.rpartition(":")
-                is_meta = host in {"www.facebook.com", "facebook.com"} or host.endswith(".fbcdn.net")
+                is_meta = _is_meta_host(host)
                 if not separator or not is_meta or port != "443":
+                    logging.getLogger(__name__).warning(
+                        "Meta test gateway rejected CONNECT target %s", _redact_proxy(f"http://{host}:{port}")
+                    )
                     self.send_error(403)
                     return
                 try:

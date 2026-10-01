@@ -11,7 +11,7 @@ import pytest
 from meta_ads_collector.client import MetaAdsClient
 from meta_ads_collector.collector import MetaAdsCollector
 
-from .meta_forward_proxy import MetaForwardProxy, MetaSocksProxy
+from .meta_forward_proxy import MetaForwardProxy, MetaSocksProxy, _is_meta_host
 
 
 def _proxy_string(proxy, form):
@@ -40,6 +40,15 @@ def test_socks_gateway_does_not_require_an_independent_meta_dns_snapshot(monkeyp
     monkeypatch.setattr(socket, "getaddrinfo", unrelated_python_dns_view)
     with MetaSocksProxy("audit", "ephemeral"):
         pass
+
+
+@pytest.mark.parametrize("host,allowed", [
+    ("www.facebook.com", True), ("web.facebook.com", True), ("facebook.com", True),
+    ("scontent.xx.fbcdn.net", True), ("facebook.com.example", False),
+    ("evilfacebook.com", False), ("127.0.0.1", False),
+])
+def test_forward_gateway_allows_meta_subdomains_without_allowing_lookalikes(host, allowed):
+    assert _is_meta_host(host) is allowed
 
 
 @pytest.mark.integration
@@ -86,6 +95,38 @@ def test_live_sync_authenticated_proxy_collects_actual_meta_ads(form):
         assert len(ads) == 3
         assert all(ad.id and ad.page and ad.page.id for ad in ads)
         assert proxy.connections, "No actual Meta tunnel was used"
+
+
+@pytest.mark.integration
+@pytest.mark.parametrize("async_mode", [False, True], ids=["sync", "async"])
+def test_live_meta_web_bootstrap_and_ads_work_through_authenticated_proxy(async_mode, monkeypatch):
+    import asyncio
+
+    from meta_ads_collector.async_collector import AsyncMetaAdsCollector
+
+    with MetaForwardProxy("audit@meta", "local/" + secrets.token_hex(12)) as proxy:
+        if async_mode:
+            async def collect():
+                async with AsyncMetaAdsCollector(proxy=_proxy_string(proxy, "url"), timeout=30,
+                                                 max_retries=2, rate_limit_delay=0.5, jitter=0) as collector:
+                    real_request = collector.client._make_request
+
+                    async def request_web_bootstrap(method, url, **kwargs):
+                        if method == "GET" and url == "https://www.facebook.com/":
+                            url = "https://web.facebook.com/"
+                        return await real_request(method, url, **kwargs)
+
+                    monkeypatch.setattr(collector.client, "_make_request", request_web_bootstrap)
+                    return await collector.collect(query="nike", country="US", max_results=3, page_size=2)
+            ads = asyncio.run(collect())
+        else:
+            with MetaAdsCollector(proxy=_proxy_string(proxy, "url"), timeout=30, max_retries=2,
+                                  rate_limit_delay=0.5, jitter=0) as collector:
+                collector.client.HOME_URL = "https://web.facebook.com/"
+                ads = list(collector.search(query="nike", country="US", max_results=3, page_size=2))
+        assert len(ads) == 3
+        assert all(ad.id and ad.page and ad.page.id for ad in ads)
+        assert "web.facebook.com" in proxy.connections
 
 
 @pytest.mark.integration

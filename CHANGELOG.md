@@ -10,6 +10,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 ### Fixed
 - Make live SOCKS5 gateway checks independent of a second DNS lookup; curl's resolved Meta address can differ from Python's resolver cache.
 - Use the same private proxy session for CI preflight and full validation, with a fresh session for post-publication checks.
+- Allow legitimate Facebook subdomains in the local test gateway while rejecting unrelated hosts and lookalikes.
 
 ### Added
 - Sync/async real Meta regressions for an unavailable independent DNS view, and guards for CI proxy session consistency.
