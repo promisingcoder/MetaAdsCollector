@@ -35,7 +35,7 @@ def test_live_relative_media_directory_reports_an_absolute_path(tmp_path, monkey
     """Reproduce the documented path contract using a real Meta CDN transfer."""
     ad = _one_live_thumbnail_or_image(collected_ads)
     monkeypatch.chdir(tmp_path)
-    downloader = MediaDownloader("relative-live-media", timeout=30, max_retries=1)
+    downloader = MediaDownloader("relative-live-media", timeout=30)
     try:
         result = downloader.download_ad_media(ad)[0]
     finally:
@@ -43,6 +43,41 @@ def test_live_relative_media_directory_reports_an_absolute_path(tmp_path, monkey
     assert result.success, result.error
     assert result.local_path is not None
     assert Path(result.local_path).is_absolute()
+
+
+@pytest.mark.parametrize("failures", [1, 3], ids=["recovers", "exhausts"])
+def test_live_meta_media_with_controlled_proxy_connect_590_is_bounded(
+    collected_ads, tmp_path, monkeypatch, failures,
+):
+    """Inject the observed proxy failure; recovery transfers actual Meta bytes."""
+    from curl_cffi.requests.exceptions import ConnectionError
+
+    ad = _one_live_thumbnail_or_image(collected_ads)
+    downloader = MediaDownloader(tmp_path / "proxy-590", timeout=30, max_retries=3)
+    real_get = downloader.session.get
+    requests = []
+
+    def first_proxy_failure_then_real_meta(url, **kwargs):
+        requests.append(url)
+        if len(requests) <= failures:
+            raise ConnectionError("CONNECT tunnel failed, response 590", code=7)
+        return real_get(url, **kwargs)
+
+    monkeypatch.setattr(downloader.session, "get", first_proxy_failure_then_real_meta)
+    try:
+        result = downloader.download_ad_media(ad)[0]
+    finally:
+        downloader.session.close()
+    assert all(url == ad.creatives[0].image_url for url in requests)
+    if failures == 1:
+        assert len(requests) == 2
+        assert result.success, result.error
+        assert result.file_size == Path(result.local_path).stat().st_size > 0
+    else:
+        assert len(requests) == 3
+        assert not result.success
+        assert "CONNECT tunnel failed, response 590" in result.error
+        assert not list(downloader.output_dir.iterdir())
 
 
 def test_live_page_collection_downloads_media_when_cli_flag_is_set(tmp_path, collected_ads):
@@ -174,7 +209,7 @@ def test_live_meta_media_download_is_cached_with_an_absolute_real_path(
             elif url:
                 setattr(creative, field, None)
     assert chosen is not None
-    downloader = MediaDownloader(tmp_path / "live-media", timeout=45, max_retries=1)
+    downloader = MediaDownloader(tmp_path / "live-media", timeout=45)
     try:
         first = downloader.download_ad_media(ad)
         assert len(first) == 1
