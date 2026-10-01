@@ -18,25 +18,21 @@ cd MetaAdsCollector
 
 # Create a virtual environment
 python -m venv .venv
-source .venv/bin/activate  # Linux/macOS
-# .venv\Scripts\activate   # Windows
+# PowerShell: .venv\Scripts\Activate.ps1
+# macOS/Linux: source .venv/bin/activate
 
 # Install in editable mode with all dev dependencies
 pip install -e ".[dev]"
 ```
 
-Or use the Makefile:
-
-```bash
-make install-dev
-```
+Async support is included in the package and does not require a separate optional dependency group.
 
 ### Dependency Groups
 
 | Group | What it includes | When to install |
 |---|---|---|
 | (none) | `curl_cffi>=0.7.0` | Always (core dependency, provides Chrome TLS fingerprinting) |
-| `dev` | `pytest`, `pytest-cov`, `pytest-asyncio`, `ruff`, `mypy` | Always for development |
+| `dev` | `pytest`, `pytest-cov`, `pytest-asyncio`, `requests`, `ruff`, `mypy` | For tests and development tools |
 
 ## Running Tests
 
@@ -71,7 +67,7 @@ markers = [
 ]
 ```
 
-Integration tests (marked with `@pytest.mark.integration`) are excluded from normal test runs. They require network access and are intended for manual verification.
+Integration tests marked with `@pytest.mark.integration` are skipped by default. They contact Meta when enabled, require network access, and may fail if Meta changes or blocks its internal endpoints. To opt in, use `python -m pytest --run-integration` or set `RUN_INTEGRATION_TESTS=1`.
 
 ## Code Style
 
@@ -198,7 +194,7 @@ meta-ads-collector/
    - Type of change (bug fix, feature, refactor, docs)
    - Checklist: ruff passes, tests pass, mypy passes, docs updated, CHANGELOG updated
    - Test plan
-4. Wait for CI to pass (Python 3.9--3.13 matrix, linting, type checking, tests).
+4. Wait for CI to pass (the workflow currently uses Python 3.9–3.13, linting, type checking, and tests).
 5. Address any review feedback.
 
 ## Commit Messages
@@ -215,7 +211,3 @@ Use clear, descriptive commit messages:
 - **All public classes and methods must have docstrings.**
 - **Test coverage should not decrease.** New features must include tests.
 - **The library must remain compatible with Python 3.9+.** Do not use features from 3.10+ without `from __future__ import annotations`.
-
-## Code of Conduct
-
-This project follows the [Contributor Covenant Code of Conduct](../CODE_OF_CONDUCT.md). By participating, you agree to abide by its terms.

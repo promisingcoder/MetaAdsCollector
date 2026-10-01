@@ -1,0 +1,35 @@
+site_name: MetaAdsCollector Documentation
+site_description: Guides and API reference for MetaAdsCollector
+site_url: https://promisingcoder.github.io/MetaAdsCollector/
+repo_url: https://github.com/promisingcoder/MetaAdsCollector
+repo_name: promisingcoder/MetaAdsCollector
+
+theme:
+  name: material
+  features:
+    - navigation.sections
+    - navigation.top
+    - content.code.copy
+
+markdown_extensions:
+  - admonition
+  - tables
+  - toc:
+      permalink: true
+
+nav:
+  - Home: index.md
+  - Beginner's Quick Start: quickstart.md
+  - CLI Reference: cli.md
+  - Python API Reference: api-reference.md
+  - Guides:
+      - Filtering: filtering.md
+      - Deduplication: deduplication.md
+      - Media Downloads: media.md
+      - Events and Webhooks: events.md
+      - Async Usage: async.md
+      - Proxy Configuration: proxy.md
+  - Architecture: architecture.md
+  - Contributing: contributing.md
+
+strict: true

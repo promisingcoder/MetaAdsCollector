@@ -23,7 +23,7 @@ from meta_ads_collector import MetaAdsCollector, AD_COLLECTED, COLLECTION_FINISH
 
 def on_ad(event):
     ad = event.data["ad"]
-    print(f"Collected: {ad.id} from {ad.page.name}")
+    print(f"Collected: {ad.id} from {ad.page.name if ad.page is not None else 'Unknown page'}")
 
 def on_finished(event):
     data = event.data
@@ -42,17 +42,36 @@ with MetaAdsCollector() as collector:
 Register callbacks at collector initialization:
 
 ```python
-collector = MetaAdsCollector(callbacks={
+from meta_ads_collector import MetaAdsCollector
+
+def on_ad(event):
+    print(f"Collected: {event.data['ad'].id}")
+
+def on_finished(event):
+    print(f"Finished: {event.data['total_ads']} ads")
+
+with MetaAdsCollector(callbacks={
     "ad_collected": on_ad,
-    "error_occurred": lambda e: print(f"Error: {e.data['context']}"),
+    "error_occurred": lambda event: print(f"Error: {event.data['context']}"),
     "collection_finished": on_finished,
-})
+}) as collector:
+    for ad in collector.search(query="test", max_results=10):
+        pass
 ```
 
 ### Removing callbacks
 
+Use `off()` on the emitter where the callback was registered:
+
 ```python
-collector.event_emitter.off(AD_COLLECTED, on_ad)
+from meta_ads_collector import MetaAdsCollector, AD_COLLECTED
+
+def on_ad(event):
+    print(event.data["ad"].id)
+
+with MetaAdsCollector() as collector:
+    collector.event_emitter.on(AD_COLLECTED, on_ad)
+    collector.event_emitter.off(AD_COLLECTED, on_ad)
 ```
 
 ## Event object
@@ -62,10 +81,11 @@ Each callback receives an `Event` object:
 ```python
 from meta_ads_collector import Event
 
-# Event fields:
-event.event_type   # str: e.g., "ad_collected"
-event.data         # dict: event-specific payload
-event.timestamp    # datetime: UTC timestamp
+# Construct an example event to inspect the event model.
+event = Event(event_type="ad_collected", data={"ad": None})
+print(event.event_type)  # e.g., "ad_collected"
+print(event.data)        # event-specific payload
+print(event.timestamp)   # UTC timestamp
 ```
 
 ## Exception isolation
@@ -77,6 +97,8 @@ Callbacks are exception-isolated. If a callback raises an exception, it is logge
 The `stream()` method yields `(event_type, data)` tuples for all lifecycle events through a single iterator:
 
 ```python
+from meta_ads_collector import MetaAdsCollector
+
 with MetaAdsCollector() as collector:
     for event_type, data in collector.stream(query="test", max_results=10):
         if event_type == "collection_started":
@@ -118,6 +140,8 @@ with MetaAdsCollector() as collector:
 Buffer ads and send them in batches:
 
 ```python
+from meta_ads_collector import MetaAdsCollector, WebhookSender, AD_COLLECTED
+
 sender = WebhookSender(
     url="https://hooks.example.com/ads",
     batch_size=10,  # Send every 10 ads
@@ -135,13 +159,18 @@ with MetaAdsCollector() as collector:
 ### Manual webhook sends
 
 ```python
+from meta_ads_collector import WebhookSender
+
 sender = WebhookSender(url="https://hooks.example.com/ads")
 
 # Send a single payload
 success = sender.send({"ad_id": "12345", "page": "Test Page"})
 
-# Send a batch
-success = sender.send_batch([ad1.to_dict(), ad2.to_dict()])
+# Send a batch of JSON-serializable payloads
+success = sender.send_batch([
+    {"ad_id": "12345", "page": "Test Page"},
+    {"ad_id": "67890", "page": "Another Page"},
+])
 ```
 
 ### CLI webhook

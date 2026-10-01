@@ -1,6 +1,6 @@
 # Proxy Configuration Guide
 
-Proxies help avoid rate limiting and IP-based blocks when collecting large volumes of ads.
+Proxies route requests through another network address. They do not guarantee higher limits, avoid Meta verification, or prevent blocking. Use only a proxy service and collection pattern you are authorized to use.
 
 ## Single proxy
 
@@ -70,8 +70,12 @@ socks5://proxy5.example.com:1080
 ```
 
 ```python
+from meta_ads_collector import MetaAdsCollector, ProxyPool
+
 pool = ProxyPool.from_file("proxies.txt")
-collector = MetaAdsCollector(proxy=pool)
+with MetaAdsCollector(proxy=pool) as collector:
+    for ad in collector.search(query="test", max_results=10):
+        print(ad.id)
 ```
 
 ### CLI with proxy file
@@ -101,6 +105,9 @@ ProxyPool tracks consecutive failures per proxy:
 6. A successful request through a revived proxy removes the dead status
 
 ```python
+from meta_ads_collector import ProxyPool
+
+proxies = ["proxy1.example.com:8080", "proxy2.example.com:8080"]
 pool = ProxyPool(proxies, max_failures=3, cooldown=300)
 
 # Check alive proxies
@@ -130,6 +137,10 @@ meta-ads-collector -q "test" --no-proxy -o ads.json
 ```
 
 ```python
+from meta_ads_collector import MetaAdsCollector
+
 # Python: simply omit the proxy parameter
-collector = MetaAdsCollector()  # Direct connection
+with MetaAdsCollector() as collector:  # Direct connection
+    for ad in collector.search(query="test", max_results=10):
+        print(ad.id)
 ```

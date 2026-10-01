@@ -1,6 +1,6 @@
 # API Reference
 
-Complete reference for all public classes, methods, and functions in `meta-ads-collector`.
+Reference for the main public classes, methods, and functions in `meta-ads-collector` version 1.4.2. Optional values and methods can vary by result shape; use `help()` or inspect the installed version when working with another release.
 
 ## Table of Contents
 
@@ -176,14 +176,18 @@ Close the collector and release resources.
 
 ### class AsyncMetaAdsCollector
 
-Async mirror of `MetaAdsCollector`. All methods are `async def` and iterators are `async for`.
+Async collector with an async search/collection interface. It does not currently expose every method available on `MetaAdsCollector`.
 
 ```python
+import asyncio
 from meta_ads_collector.async_collector import AsyncMetaAdsCollector
 
-async with AsyncMetaAdsCollector() as collector:
-    async for ad in collector.search(query="test"):
-        print(ad.id)
+async def main():
+    async with AsyncMetaAdsCollector() as collector:
+        async for ad in collector.search(query="test"):
+            print(ad.id)
+
+asyncio.run(main())
 ```
 
 #### Methods
@@ -261,7 +265,7 @@ Same method signatures as `MetaAdsClient` with `async def`.
 
 ### class Ad
 
-Complete ad schema with all available fields from the Meta Ad Library.
+Normalized ad schema for the fields parsed by this package. Meta may omit fields or change its internal response format; this model is not a promise that every listed value will be available for every ad.
 
 | Field | Type | Description |
 |---|---|---|
@@ -281,7 +285,7 @@ Complete ad schema with all available fields from the Meta Ad Library.
 | `currency` | `str \| None` | Currency code |
 | `age_gender_distribution` | `list[AudienceDistribution]` | Demographic distribution |
 | `region_distribution` | `list[AudienceDistribution]` | Geographic distribution |
-| `targeting` | `TargetingInfo \| None` | Targeting information |
+| `targeting` | `TargetingInfo \| None` | Reserved model field; `Ad.from_graphql_response()` does not currently populate it |
 | `estimated_audience_size_lower` | `int \| None` | Estimated audience lower bound |
 | `estimated_audience_size_upper` | `int \| None` | Estimated audience upper bound |
 | `publisher_platforms` | `list[str]` | Platforms (facebook, instagram, etc.) |

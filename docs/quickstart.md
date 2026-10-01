@@ -1,90 +1,75 @@
-# Quick Start Guide
+# Beginner's Quick Start
 
-Get from zero to collecting ads in under 60 seconds.
+This guide shows how to install MetaAdsCollector and save search results to a spreadsheet file. You do not need to write code. You will paste a few commands into your computer's command window.
 
-## Install
+## 1. Install Python
 
-```bash
-pip install meta-ads-collector
+Download Python from [python.org/downloads](https://www.python.org/downloads/) and install it. On Windows, select the option to add Python to PATH if the installer offers it.
+
+## 2. Open a command window
+
+- **Windows:** Open PowerShell from the Start menu.
+- **macOS:** Open Terminal from Applications → Utilities.
+- **Linux:** Open your Terminal app.
+
+## 3. Install MetaAdsCollector
+
+Copy the command for your system, paste it into the command window, and press Enter.
+
+**Windows:**
+
+```powershell
+py -m pip install --upgrade meta-ads-collector
 ```
 
-This installs `curl_cffi` automatically, providing Chrome-like TLS fingerprinting so requests are indistinguishable from a real browser.
+**macOS or Linux:**
 
-## Python API
+```bash
+python3 -m pip install --upgrade meta-ads-collector
+```
+
+## 4. Search and save a CSV file
+
+The following command searches ads delivered in the United States for “solar panels” and saves up to 25 results in `ads.csv` in the current folder. Replace the search words with a topic or brand you want to look up.
+
+**Windows:**
+
+```powershell
+py -m meta_ads_collector -q "solar panels" -c US -n 25 -o ads.csv
+```
+
+**macOS or Linux:**
+
+```bash
+python3 -m meta_ads_collector -q "solar panels" -c US -n 25 -o ads.csv
+```
+
+To search another country, replace `US` with a two-letter country code such as `GB` or `EG`. Meta determines which ads and details are available in each country; results can be empty or incomplete.
+
+## 5. Open your results
+
+Find `ads.csv` in the folder shown in your command window and open it with Excel, Numbers, or another spreadsheet app.
+
+If Python cannot find `meta_ads_collector`, confirm the installation completed successfully and that the same Python installation is used in both commands. See the [CLI guide](cli.md) for other options.
+
+## Python example
+
+If you later want to use Python code, this minimal example prints an ad ID and any available page, impressions, and spend data:
 
 ```python
 from meta_ads_collector import MetaAdsCollector
 
 with MetaAdsCollector() as collector:
     for ad in collector.search(query="solar panels", country="US", max_results=10):
-        print(f"{ad.page.name}: {ad.id}")
-        print(f"  Body: {ad.creatives[0].body[:80] if ad.creatives else 'N/A'}...")
+        page_name = ad.page.name if ad.page else "Unknown page"
+        print(f"{page_name}: {ad.id}")
         print(f"  Impressions: {ad.impressions}")
         print(f"  Spend: {ad.spend}")
 ```
 
-## CLI
-
-```bash
-# Export to JSON
-meta-ads-collector -q "solar panels" -c US -n 10 -o solar.json
-
-# Export to CSV
-meta-ads-collector -q "solar panels" -c US -n 100 -o solar.csv
-
-# Export to JSONL (streaming-friendly)
-meta-ads-collector -q "solar panels" -c US -o solar.jsonl
-```
-
-## Export to file (Python)
-
-```python
-from meta_ads_collector import MetaAdsCollector
-
-with MetaAdsCollector() as collector:
-    count = collector.collect_to_json("ads.json", query="fitness", country="US", max_results=200)
-    print(f"Saved {count} ads")
-```
-
-## Collect ads from a specific page
-
-```python
-from meta_ads_collector import MetaAdsCollector
-
-with MetaAdsCollector() as collector:
-    # By page name (resolves via typeahead search)
-    for ad in collector.collect_by_page_name("Coca-Cola", country="US", max_results=50):
-        print(ad.id, ad.creatives[0].body[:50] if ad.creatives else "")
-
-    # By page URL
-    for ad in collector.collect_by_page_url(
-        "https://www.facebook.com/ads/library/?view_all_page_id=123456"
-    ):
-        print(ad.id)
-```
-
-## With a proxy
-
-```python
-from meta_ads_collector import MetaAdsCollector
-
-with MetaAdsCollector(proxy="host:port:user:pass") as collector:
-    for ad in collector.search(query="test", max_results=10):
-        print(ad.id)
-```
-
-Or via the CLI:
-
-```bash
-meta-ads-collector -q "test" --proxy "host:port:user:pass" -o ads.json
-```
-
 ## Next steps
 
-- [Filtering guide](filtering.md) -- narrow results by impressions, spend, dates, media type
-- [Deduplication guide](deduplication.md) -- avoid collecting the same ad twice
-- [Media downloads](media.md) -- download images and videos from ad creatives
-- [Events & webhooks](events.md) -- react to collection lifecycle events
-- [Async usage](async.md) -- use with asyncio
-- [Proxy configuration](proxy.md) -- proxy rotation and failure handling
-- [CLI reference](cli.md) -- complete list of CLI flags
+- [CLI reference](cli.md) — command options and examples
+- [Filtering guide](filtering.md) — filter collected results
+- [Media guide](media.md) — download media returned with ads
+- [API reference](api-reference.md) — Python classes and methods

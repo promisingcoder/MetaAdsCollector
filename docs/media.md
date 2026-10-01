@@ -48,6 +48,8 @@ Extensions are resolved in priority order:
 The `collect_with_media()` method on `MetaAdsCollector` yields `(Ad, list[MediaDownloadResult])` tuples:
 
 ```python
+from meta_ads_collector import MetaAdsCollector
+
 with MetaAdsCollector() as collector:
     for ad, results in collector.collect_with_media(
         query="tech",
@@ -59,31 +61,42 @@ with MetaAdsCollector() as collector:
         print(f"Ad {ad.id}: {len(successful)} downloaded, {len(failed)} failed")
 ```
 
-If media downloading fails for an ad, the ad is still yielded with an empty results list. Ad data is never lost due to media download failures.
+The ad is yielded even when one or more media downloads fail. Each attempted download has a result entry with `success=False` and an error message; an empty result list means no downloadable media URL was available or the download loop itself could not produce a result.
 
 ## Download media for a single ad
 
 ```python
-with MetaAdsCollector() as collector:
-    ad = next(collector.search(query="test", max_results=1))
-    results = collector.download_ad_media(ad, output_dir="./single_ad_media")
+from meta_ads_collector import MetaAdsCollector
 
-    for r in results:
-        print(f"{r.media_type}: success={r.success}, path={r.local_path}")
+with MetaAdsCollector() as collector:
+    ad = next(collector.search(query="test", max_results=1), None)
+    if ad is None:
+        print("No ads found")
+    else:
+        results = collector.download_ad_media(ad, output_dir="./single_ad_media")
+        for result in results:
+            print(f"{result.media_type}: success={result.success}, path={result.local_path}")
 ```
 
 ## Using MediaDownloader directly
 
+This standalone example retrieves an ad first, then passes it to `MediaDownloader`:
+
 ```python
-from meta_ads_collector import MediaDownloader
+from meta_ads_collector import MediaDownloader, MetaAdsCollector
 
-downloader = MediaDownloader(
-    output_dir="./media",
-    timeout=30,
-    max_retries=2,
-)
-
-results = downloader.download_ad_media(ad)
+with MetaAdsCollector() as collector:
+    ad = next(collector.search(query="test", max_results=1), None)
+    if ad is not None:
+        downloader = MediaDownloader(
+            output_dir="./media",
+            timeout=30,
+            max_retries=2,
+        )
+        results = downloader.download_ad_media(ad)
+        print(results)
+    else:
+        print("No ads found")
 ```
 
 ## MediaDownloadResult
@@ -113,6 +126,6 @@ meta-ads-collector -q "tech" --download-media --media-dir /data/ad_media -o tech
 
 ## Retry behavior
 
-Downloads retry up to `max_retries` times (default 2) with exponential backoff. HTTP 403 responses (expired URLs) are not retried since they indicate the CDN token has expired.
+Downloads retry up to `max_retries` times (default 2) with exponential backoff. The downloader treats HTTP 403 as a likely expired URL and does not retry it; a 403 response alone does not establish why access was denied.
 
 Existing files with non-zero size are skipped automatically.

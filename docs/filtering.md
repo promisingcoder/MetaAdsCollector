@@ -127,13 +127,14 @@ meta-ads-collector -q "loans" \
 For custom pipelines, you can use the `passes_filter` function directly:
 
 ```python
-from meta_ads_collector import FilterConfig, passes_filter
+from meta_ads_collector import FilterConfig, MetaAdsCollector, passes_filter
 
 filters = FilterConfig(min_impressions=1000)
 
-# Test any Ad object against the filter
-if passes_filter(ad, filters):
-    process(ad)
+with MetaAdsCollector() as collector:
+    ad = next(collector.search(query="test", max_results=1), None)
+    if ad is not None and passes_filter(ad, filters):
+        print(ad.id)  # Replace with your processing code.
 ```
 
 ## Impression and spend filter logic

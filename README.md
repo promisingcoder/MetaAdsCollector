@@ -5,27 +5,17 @@
 [![CI](https://img.shields.io/github/actions/workflow/status/promisingcoder/MetaAdsCollector/ci.yml?branch=main&label=tests)](https://github.com/promisingcoder/MetaAdsCollector/actions)
 [![License: MIT](https://img.shields.io/badge/license-MIT-blue.svg)](https://github.com/promisingcoder/MetaAdsCollector/blob/main/LICENSE)
 
-**No API key required.** Collect ads from the [Meta Ad Library](https://www.facebook.com/ads/library/) using Python. No developer account, no identity verification, no rate-limited official API. Just install and search.
+**No Meta API key required.** Search ads in the [Meta Ad Library](https://www.facebook.com/ads/library/) with a Python library or command-line tool. MetaAdsCollector does not call Meta's official Ad Library API. It relies on internal Meta endpoints, which Meta can change, restrict, or block at any time.
 
-`meta-ads-collector` reverse-engineers Meta's internal GraphQL API to give you programmatic access to **all ad types** in **all countries** -- commercial ads, political ads, housing, employment, credit -- with full creative content, spend data, impression ranges, and audience demographics.
+`meta-ads-collector` searches the Ad Library for commercial, political, housing, employment, and credit ads in countries supported by Meta's site. Returned creative and transparency details depend on what Meta makes available for each ad.
 
 ## About
 
-MetaAdsCollector is a Python package published on [PyPI](https://pypi.org/project/meta-ads-collector/). Read the [full documentation](https://github.com/promisingcoder/MetaAdsCollector/tree/main/docs), including the [beginner's guide](https://github.com/promisingcoder/MetaAdsCollector/blob/main/docs/quickstart.md).
+MetaAdsCollector is a Python package published on [PyPI](https://pypi.org/project/meta-ads-collector/). Visit the [documentation website](https://promisingcoder.github.io/MetaAdsCollector/) for the [beginner's guide](https://promisingcoder.github.io/MetaAdsCollector/quickstart/) and the complete guides and API reference.
 
-## Why not the official API?
+## Availability and limitations
 
-| Feature | meta-ads-collector | Official Meta Ad Library API |
-|---|---|---|
-| API key required | **No** | Yes (requires developer account) |
-| Identity verification | **No** | Yes (physical mail verification) |
-| Ad types available | **All** (commercial, political, housing, employment, credit) | Political/issue ads only (+ EU) |
-| Countries | **All** | Limited |
-| Creative content | **Full** (text, images, videos, CTAs) | Partial |
-| Spend & impression data | **Yes** | Limited |
-| Audience demographics | **Yes** | Limited |
-| Rate limits | Managed automatically | Strict, enforced |
-| Setup time | **< 60 seconds** | Days to weeks |
+MetaAdsCollector uses internal Meta endpoints, not the supported Graph API. It does not require a Meta API key, but it is not an official Meta product or API. Meta can change the endpoints or access rules without notice; requests may fail, be challenged, or return incomplete results. Fields such as spend, impressions, and audience distributions are only present when Meta returns them for an ad. Review Meta's [Ad Library](https://www.facebook.com/ads/library/) and applicable terms before use.
 
 ## Quick Start
 
@@ -51,12 +41,12 @@ Follow these steps to collect ads into a spreadsheet. You do not need to write o
 
    **Windows:**
    ```powershell
-   meta-ads-collector -q "solar panels" -c US -n 25 -o ads.csv
+   py -m meta_ads_collector -q "solar panels" -c US -n 25 -o ads.csv
    ```
 
    **macOS or Linux:**
    ```bash
-   meta-ads-collector -q "solar panels" -c US -n 25 -o ads.csv
+   python3 -m meta_ads_collector -q "solar panels" -c US -n 25 -o ads.csv
    ```
 
    This searches ads delivered in the United States and saves up to 25 results in `ads.csv` in the current folder. Change `US` to another country code, such as `GB` or `EG`, if needed.
@@ -71,7 +61,8 @@ from meta_ads_collector import MetaAdsCollector
 
 with MetaAdsCollector() as collector:
     for ad in collector.search(query="solar panels", country="US", max_results=10):
-        print(f"{ad.page.name}: {ad.id}")
+        page_name = ad.page.name if ad.page is not None else "Unknown page"
+        print(f"{page_name}: {ad.id}")
         print(f"  Impressions: {ad.impressions}")
         print(f"  Spend: {ad.spend}")
 ```
@@ -96,9 +87,9 @@ cd MetaAdsCollector
 pip install -e ".[dev]"
 ```
 
-**Requirements:** Python 3.9+
+**Declared requirement:** Python 3.9+ (`pyproject.toml`). The current test report was run on Python 3.12; compatibility has not been verified here on every declared Python version.
 
-`curl_cffi` is installed automatically and provides Chrome-like TLS fingerprints so requests are indistinguishable from a real browser.
+`curl_cffi` is installed automatically and provides browser TLS impersonation for HTTP compatibility. It does not guarantee that requests will avoid Meta's verification or blocking.
 
 ## Features
 
@@ -106,15 +97,15 @@ pip install -e ".[dev]"
 - **Advanced Filtering** -- 11 client-side filters: impressions, spend, dates, media type, platforms, languages
 - **Deduplication** -- in-memory or persistent SQLite mode for incremental collection across runs
 - **Media Downloads** -- download images, videos, and thumbnails from ad creatives
-- **Ad Enrichment** -- fetch additional detail data from the ad snapshot endpoint
+- **Ad Enrichment** -- fetch additional details through the ad detail flow; fields depend on Meta's response
 - **Events & Webhooks** -- 7 lifecycle events with callback registration, webhook POST integration
-- **Async Support** -- full async/await API using curl_cffi
+- **Async Support** -- async search, collection, JSON/CSV export, page search, statistics, and cleanup using curl_cffi
 - **Proxy Support** -- single proxy, proxy rotation with failure tracking and dead-proxy cooldown
 - **Structured Logging** -- text or JSON log format, optional file output
 - **Collection Reporting** -- summary statistics with throughput metrics
 - **Export Formats** -- JSON, CSV, JSONL
 - **Stream Mode** -- yield lifecycle events alongside ads through a single iterator
-- **Detection Avoidance** -- browser fingerprint randomization, Chrome TLS fingerprint impersonation via `curl_cffi`, dynamic token extraction, session management
+- **Request/session handling** -- browser-style TLS impersonation via `curl_cffi`, token extraction, and session refresh; Meta may still challenge or block requests
 
 ---
 
@@ -128,7 +119,7 @@ from meta_ads_collector import MetaAdsCollector
 with MetaAdsCollector() as collector:
     # Iterator-based (memory efficient)
     for ad in collector.search(query="fitness", country="US", max_results=100):
-        print(ad.id, ad.page.name)
+        print(ad.id, ad.page.name if ad.page is not None else "Unknown page")
 
     # List-based
     ads = collector.collect(query="fitness", country="US", max_results=50)
@@ -137,35 +128,41 @@ with MetaAdsCollector() as collector:
 ### Page-level collection
 
 ```python
-# By Facebook page URL
-for ad in collector.collect_by_page_url("https://www.facebook.com/ads/library/?view_all_page_id=123456"):
-    print(ad.id)
+from meta_ads_collector import MetaAdsCollector
 
-# By page name (uses typeahead search, selects first match)
-for ad in collector.collect_by_page_name("Coca-Cola", country="US"):
-    print(ad.id)
+with MetaAdsCollector() as collector:
+    # By Facebook page URL
+    for ad in collector.collect_by_page_url("https://www.facebook.com/ads/library/?view_all_page_id=123456"):
+        print(ad.id)
 
-# By numeric page ID
-for ad in collector.collect_by_page_id("123456", country="US"):
-    print(ad.id)
+    # By page name (uses typeahead search, selects first match)
+    for ad in collector.collect_by_page_name("Coca-Cola", country="US"):
+        print(ad.id)
 
-# Search for pages first
-pages = collector.search_pages("Nike", country="US")
-for page in pages:
-    print(f"{page.page_name} (ID: {page.page_id})")
+    # By numeric page ID
+    for ad in collector.collect_by_page_id("123456", country="US"):
+        print(ad.id)
+
+    # Search for pages first
+    pages = collector.search_pages("Nike", country="US")
+    for page in pages:
+        print(f"{page.page_name} (ID: {page.page_id})")
 ```
 
 ### Export to file
 
 ```python
-# JSON (with metadata envelope)
-collector.collect_to_json("output.json", query="AI", country="US", max_results=200)
+from meta_ads_collector import MetaAdsCollector
 
-# CSV (flattened, 25 columns)
-collector.collect_to_csv("output.csv", query="AI", country="US", max_results=200)
+with MetaAdsCollector() as collector:
+    # JSON (with metadata envelope)
+    collector.collect_to_json("output.json", query="AI", country="US", max_results=200)
 
-# JSONL (one object per line, streaming-friendly)
-collector.collect_to_jsonl("output.jsonl", query="AI", country="US", max_results=200)
+    # CSV (flattened)
+    collector.collect_to_csv("output.csv", query="AI", country="US", max_results=200)
+
+    # JSONL (one object per line, streaming-friendly)
+    collector.collect_to_jsonl("output.jsonl", query="AI", country="US", max_results=200)
 ```
 
 ### Search parameters
@@ -242,7 +239,7 @@ tracker = DeduplicationTracker(mode="memory")
 
 with MetaAdsCollector() as collector:
     for ad in collector.search(query="test", dedup_tracker=tracker):
-        print(ad.id)  # Guaranteed unique within this run
+        print(ad.id)  # Duplicate IDs are skipped when the search iterator is fully consumed.
 
 print(f"Unique ads seen: {tracker.count()}")
 ```
@@ -250,20 +247,23 @@ print(f"Unique ads seen: {tracker.count()}")
 ### Persistent (across runs)
 
 ```python
-tracker = DeduplicationTracker(mode="persistent", db_path="collection_state.db")
+from meta_ads_collector import MetaAdsCollector, DeduplicationTracker
 
+tracker = DeduplicationTracker(mode="persistent", db_path="collection_state.db")
 with MetaAdsCollector() as collector:
-    # Only collect ads not seen in previous runs
+    # Only collect ads not seen in previous runs. Consume the iterator fully
+    # so its completion/finalization logic can save tracker state.
     for ad in collector.search(query="test", dedup_tracker=tracker):
         print(ad.id)
-
-# State is automatically saved on context manager exit
+tracker.close()
 ```
 
 ### Incremental collection
 
 ```python
-# Use with --since-last-run in CLI, or manually:
+# Use with --since-last-run in the CLI, or manually:
+from meta_ads_collector import MetaAdsCollector, DeduplicationTracker, FilterConfig
+
 tracker = DeduplicationTracker(mode="persistent", db_path="state.db")
 last_run = tracker.get_last_collection_time()
 
@@ -271,10 +271,8 @@ filters = FilterConfig(start_date=last_run) if last_run else None
 
 with MetaAdsCollector() as collector:
     for ad in collector.search(query="test", filter_config=filters, dedup_tracker=tracker):
-        process(ad)
-
-tracker.update_collection_time()
-tracker.save()
+        print(ad.id)  # Replace this with your application's processing code.
+tracker.close()
 ```
 
 ---
@@ -302,8 +300,11 @@ with MetaAdsCollector() as collector:
                 print(f"  Failed {result.media_type}: {result.error}")
 
     # Or download media for a single ad
-    ad = next(collector.search(query="test", max_results=1))
-    results = collector.download_ad_media(ad, output_dir="./media")
+    ad = next(collector.search(query="test", max_results=1), None)
+    if ad is None:
+        print("No ads found")
+    else:
+        results = collector.download_ad_media(ad, output_dir="./media")
 ```
 
 Files are saved as `{ad_id}_{creative_index}_{media_type}.{ext}` (e.g., `123456_0_image.jpg`).
@@ -312,9 +313,11 @@ Files are saved as `{ad_id}_{creative_index}_{media_type}.{ext}` (e.g., `123456_
 
 ## Ad Enrichment
 
-Fetch additional detail data from the ad snapshot endpoint to fill in missing fields.
+Fetch additional details through the ad detail flow, which tries an ad detail page and then a page-scoped search. The fields returned depend on Meta's response and may not include every field for every ad.
 
 ```python
+from meta_ads_collector import MetaAdsCollector
+
 with MetaAdsCollector() as collector:
     for ad in collector.search(query="test", max_results=5):
         enriched = collector.enrich_ad(ad)
@@ -351,10 +354,17 @@ with MetaAdsCollector() as collector:
 Or register callbacks at init:
 
 ```python
-collector = MetaAdsCollector(callbacks={
-    "ad_collected": on_ad,
-    "collection_finished": on_finished,
-})
+from meta_ads_collector import MetaAdsCollector
+
+def on_ad(event):
+    print(f"Collected: {event.data['ad'].id}")
+
+def on_finished(event):
+    print(f"Done: {event.data['total_ads']} ads")
+
+with MetaAdsCollector(callbacks={"ad_collected": on_ad, "collection_finished": on_finished}) as collector:
+    for ad in collector.search(query="test", max_results=10):
+        pass
 ```
 
 ### Event types
@@ -374,6 +384,8 @@ collector = MetaAdsCollector(callbacks={
 Yield events and ads through a single iterator:
 
 ```python
+from meta_ads_collector import MetaAdsCollector
+
 with MetaAdsCollector() as collector:
     for event_type, data in collector.stream(query="test", max_results=10):
         if event_type == "ad_collected":
@@ -408,7 +420,7 @@ with MetaAdsCollector() as collector:
 
 ## Async Support
 
-Full async API with the same TLS fingerprint impersonation as the sync client.
+Async collection with the same TLS fingerprint impersonation as the sync client. Available async methods do not cover every sync collector feature.
 
 ```python
 import asyncio
@@ -417,7 +429,7 @@ from meta_ads_collector.async_collector import AsyncMetaAdsCollector
 async def main():
     async with AsyncMetaAdsCollector() as collector:
         async for ad in collector.search(query="test", country="US", max_results=10):
-            print(ad.id, ad.page.name)
+            print(ad.id, ad.page.name if ad.page is not None else "Unknown page")
 
         # Export
         count = await collector.collect_to_json("async_output.json", query="test", max_results=50)
@@ -426,7 +438,7 @@ async def main():
 asyncio.run(main())
 ```
 
-The async collector mirrors the sync API: `search()`, `collect()`, `collect_to_json()`, `collect_to_csv()`, `search_pages()`, `get_stats()`. The async client uses `curl_cffi.AsyncSession` with Chrome TLS impersonation.
+The async collector currently provides `search()`, `collect()`, `collect_to_json()`, `collect_to_csv()`, `search_pages()`, `get_stats()`, and `close()`. It does not currently provide JSONL export, media, ad enrichment, page-specific collection, or stream mode. The async client uses `curl_cffi.AsyncSession` with Chrome TLS impersonation.
 
 ---
 
@@ -435,9 +447,13 @@ The async collector mirrors the sync API: `search()`, `collect()`, `collect_to_j
 ### Single proxy
 
 ```python
-collector = MetaAdsCollector(proxy="host:port:user:pass")
-# or
-collector = MetaAdsCollector(proxy="host:port")
+from meta_ads_collector import MetaAdsCollector
+
+with MetaAdsCollector(proxy="host:port:user:pass") as collector:
+    for ad in collector.search(query="test", max_results=10):
+        print(ad.id)
+
+# For an unauthenticated proxy, use proxy="host:port" in the constructor.
 ```
 
 ### Proxy rotation
@@ -456,9 +472,13 @@ collector = MetaAdsCollector(proxy=pool)
 ```
 
 ```python
+from meta_ads_collector import MetaAdsCollector, ProxyPool
+
 # From a file (one proxy per line)
 pool = ProxyPool.from_file("proxies.txt")
-collector = MetaAdsCollector(proxy=pool)
+with MetaAdsCollector(proxy=pool) as collector:
+    for ad in collector.search(query="test", max_results=10):
+        print(ad.id)
 ```
 
 The proxy pool provides round-robin selection with failure tracking. Proxies that fail `max_failures` times consecutively are excluded for a `cooldown` period (default 300 seconds), then automatically retried.
@@ -483,12 +503,13 @@ from meta_ads_collector import setup_logging
 setup_logging(level="INFO")
 
 # JSON format (for log aggregation)
-setup_logging(level="DEBUG", fmt="json", log_file="/var/log/collector.log")
+setup_logging(level="DEBUG", fmt="json", log_file="collector.log")
 ```
 
 ### Collection reporting
 
 ```python
+from meta_ads_collector import MetaAdsCollector
 from meta_ads_collector.reporting import CollectionReport, format_report
 
 with MetaAdsCollector() as collector:
@@ -659,6 +680,8 @@ meta-ads-collector -q "test" --log-format json --report -o test.json
 The main entry point. Supports context manager protocol.
 
 ```python
+from meta_ads_collector import MetaAdsCollector, ProxyPool
+
 collector = MetaAdsCollector(
     proxy=None,              # str, list[str], ProxyPool, or None
     rate_limit_delay=2.0,    # seconds between requests
@@ -689,38 +712,7 @@ collector = MetaAdsCollector(
 
 ### Ad Model
 
-```python
-@dataclass
-class Ad:
-    id: str                                    # Ad Archive ID
-    ad_library_id: Optional[str]
-    page: Optional[PageInfo]                   # .id, .name, .profile_picture_url, .page_url, .likes, .verified
-    is_active: Optional[bool]
-    ad_status: Optional[str]                   # ACTIVE, INACTIVE
-    delivery_start_time: Optional[datetime]
-    delivery_stop_time: Optional[datetime]
-    creatives: list[AdCreative]                # .body, .title, .description, .link_url, .image_url, .video_url, ...
-    snapshot_url: Optional[str]
-    ad_snapshot_url: Optional[str]
-    impressions: Optional[ImpressionRange]     # .lower_bound, .upper_bound
-    spend: Optional[SpendRange]                # .lower_bound, .upper_bound, .currency
-    reach: Optional[ImpressionRange]
-    currency: Optional[str]
-    age_gender_distribution: list[AudienceDistribution]
-    region_distribution: list[AudienceDistribution]
-    publisher_platforms: list[str]
-    languages: list[str]
-    funding_entity: Optional[str]
-    disclaimer: Optional[str]
-    ad_type: Optional[str]
-    categories: list[str]
-    beneficiary_payers: list[str]
-    bylines: list[str]
-    collation_id: Optional[str]
-    collation_count: Optional[int]
-    collected_at: datetime
-    raw_data: Optional[dict]                   # Full API response (with include_raw=True)
-```
+`Ad` is the normalized data model returned by collection methods. See the [data model reference](docs/api-reference.md#data-models) for its fields and types. Values can be absent when Meta does not provide them; the model reference describes the schema, not guaranteed populated data.
 
 ### Exceptions
 
