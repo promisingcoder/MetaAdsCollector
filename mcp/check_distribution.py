@@ -75,6 +75,7 @@ def main():
         )
         # Only tests/fixtures are copied. There is no collector source in this directory.
         shutil.copytree(root / "mcp/tests", work / "mcp/tests", ignore=shutil.ignore_patterns("__pycache__"))
+        shutil.copy2(root / "README.md", work / "README.md")
         (work / "tests").mkdir()
         for name in ("__init__.py", "audit_meta_samples.py", "meta_full_sample.py", "ci_network.py"):
             shutil.copy2(root / "tests" / name, work / "tests" / name)

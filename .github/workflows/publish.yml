@@ -40,8 +40,17 @@ jobs:
         run: python scripts/check_distribution.py --published current --minimum
       - name: Verify public PyPI package against real Meta
         run: python scripts/check_distribution.py --published current --live
+      - name: Download the exact public MCP release
+        run: |
+          python -c "from pathlib import Path; import tomllib; from scripts.check_distribution import fetch_published; output=Path('published-dist'); output.mkdir(exist_ok=True); fetch_published(tomllib.loads(Path('pyproject.toml').read_text())['project']['version'], output)"
+      - name: Verify public PyPI MCP extra and README examples
+        run: |
+          python mcp/check_distribution.py --dist-dir published-dist
+          python mcp/check_distribution.py --dist-dir published-dist --live
       - uses: actions/upload-artifact@v4
         if: always()
         with:
           name: published-package-tests
-          path: ci-results/
+          path: |
+            ci-results/
+            mcp/test-results/

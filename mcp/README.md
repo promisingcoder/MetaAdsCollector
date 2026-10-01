@@ -10,15 +10,21 @@ deduplication, media downloads, filtering, reports, and webhook delivery.
 The MCP extra requires Python **3.10 or newer**. The core collector retains its
 Python 3.9 support and does not require the MCP SDK.
 
-For this development version, install from the repository root:
+Install the published MCP extra (version 1.6.0 or newer):
+
+```bash
+python -m pip install --upgrade "meta-ads-collector[mcp]"
+meta-ads-mcp --help
+```
+
+Or install from the repository root:
 
 ```bash
 python -m pip install -e ".[mcp]"
 meta-ads-mcp --help
 ```
 
-Once a release containing the extension is published, the equivalent PyPI
-installation is `python -m pip install "meta-ads-collector[mcp]"`. An extra is
+An extra is
 an optional dependency group of the same distribution, not a second collector.
 The ordinary collector import and CLI retain their existing implementation.
 
