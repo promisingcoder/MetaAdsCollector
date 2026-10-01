@@ -134,7 +134,7 @@ jobs:
           name: mcp-wheel-tests
           path: mcp/test-results/
   mcp-live:
-    needs: [mcp-distribution, live-connectivity]
+    needs: [mcp-distribution, live-meta]
     runs-on: macos-latest
     timeout-minutes: 20
     env:
