@@ -10,7 +10,7 @@ from contextlib import contextmanager, suppress
 from pathlib import Path
 from typing import Any
 
-from .schemas import MCPError
+from .schemas import Cancelled, MCPError
 
 
 def dumps(value: Any) -> str:
@@ -147,9 +147,12 @@ class Store:
 
     def save_ad(self, job_id: str, owner: str, record: dict) -> bool:
         with self.db() as db:
-            job = db.execute("SELECT owner,schedule_id FROM jobs WHERE id=?", (job_id,)).fetchone()
+            db.execute("BEGIN IMMEDIATE")
+            job = db.execute("SELECT owner,schedule_id,cancel FROM jobs WHERE id=?", (job_id,)).fetchone()
             if job is None or job["owner"] != owner:
                 raise MCPError("lease_lost", "Collection lease was lost")
+            if job["cancel"]:
+                raise Cancelled()
             newly = False
             if job["schedule_id"]:
                 newly = bool(
@@ -205,6 +208,7 @@ class Store:
     def event(self, job_id: str, kind: str, data: dict, owner: str | None = None) -> None:
         with self.db() as db:
             if owner is not None:
+                db.execute("BEGIN IMMEDIATE")
                 row = db.execute("SELECT owner FROM jobs WHERE id=?", (job_id,)).fetchone()
                 if row is None or row[0] != owner:
                     return

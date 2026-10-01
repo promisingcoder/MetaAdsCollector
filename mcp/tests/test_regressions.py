@@ -221,3 +221,13 @@ def test_graceful_background_shutdown_requeues_durable_job(service, monkeypatch)
     result = service.execute(job_id, 1, background=True)
     assert result["state"] == "QUEUED"
     assert service.store.job(job_id)["owner"] is None
+
+
+def test_cancel_between_budget_check_and_commit_is_transactional(service, real_records):
+    from meta_ads_collector_mcp.schemas import Cancelled
+    job_id = service.store.create_job(service.freeze(Search(query="nike")))
+    assert service.store.claim(job_id, service.owner)
+    service.store.control(job_id, "cancel")
+    with pytest.raises(Cancelled):
+        service.store.save_ad(job_id, service.owner, real_records[0])
+    assert service.store.job(job_id)["count"] == 0
