@@ -175,6 +175,7 @@ def test_default_summaries_omit_long_media_urls_without_losing_saved_fields(serv
     assert detailed["creatives"] == real_records[0]["creatives"]
     selected = service.results(stored, fields=["creatives"])["ads"][0]
     assert selected["creatives"] == real_records[0]["creatives"]
+    assert len(json.dumps(summary)) < len(json.dumps(detailed))
 
 
 def test_summary_truncation_is_explicit_and_does_not_mutate_source(service, stored, real_records):
