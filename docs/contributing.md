@@ -75,6 +75,8 @@ CI runs the regression suite on Python 3.9–3.14 on Linux and Python 3.12 on Wi
 
 The blocking live job uses the built wheel against real Meta ads, including pagination, field fidelity, exports, media, and authenticated/rotating local forwarding proxies. The forwarding proxies tunnel to Meta; they do not supply fabricated responses. Network or Meta changes can fail this job and are visible in the uploaded JUnit results. Missing optional data is reported as unverified rather than assumed to work.
 
+If Meta rejects the hosted runner network, configure a working upstream proxy as the private GitHub Actions secret `METAADS_CI_PROXY`. Tests use it for actual Meta/CDN requests, including the upstream leg of the local proxy transport checks. Credentials belong only in the secret, never in a workflow, fixture, or committed file. The bounded connectivity check fails before the full workload when Meta refuses access.
+
 Publishing reuses all CI checks before uploading the tested artifacts with PyPI Trusted Publishing. The final job downloads hash-verified public PyPI artifacts and repeats minimum-dependency and live checks. No PyPI token belongs in the repository.
 
 ```bash
@@ -209,7 +211,7 @@ meta-ads-collector/
    - Type of change (bug fix, feature, refactor, docs)
    - Checklist: ruff passes, tests pass, mypy passes, docs updated, CHANGELOG updated
    - Test plan
-4. Wait for CI to pass (the workflow currently uses Python 3.9–3.13, linting, type checking, and tests).
+4. Wait for CI to pass (Python 3.9–3.14, Windows, linting, type checking, distribution checks, and actual Meta integration tests).
 5. Address any review feedback.
 
 ## Commit Messages

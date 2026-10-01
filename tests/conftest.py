@@ -69,6 +69,23 @@ def pytest_collection_modifyitems(config: Any, items: list[Any]) -> None:
 # Session-scoped integration fixtures
 # ---------------------------------------------------------------------------
 
+@pytest.fixture(scope="session", autouse=True)
+def ci_meta_network(request):
+    """Configure optional CI egress before any session/module Meta fixture."""
+    from tests.ci_network import configure_ci_network, validate_ci_proxy
+
+    integration_enabled = request.config.getoption("--run-integration", default=False)
+    integration_enabled = integration_enabled or os.environ.get("RUN_INTEGRATION_TESTS") == "1"
+    proxy = validate_ci_proxy(
+        os.environ.get("METAADS_CI_PROXY"),
+        required=integration_enabled and os.environ.get("GITHUB_ACTIONS") == "true",
+    )
+    with pytest.MonkeyPatch.context() as patch:
+        if proxy:
+            configure_ci_network(patch, proxy)
+        yield
+
+
 @pytest.fixture(scope="session")
 def real_client():
     """Session-scoped fixture: a real MetaAdsClient initialized once.

@@ -15,12 +15,30 @@ import venv
 import zipfile
 from email.parser import Parser
 from pathlib import Path
+from urllib.parse import quote, unquote, urlsplit
 
 from packaging.requirements import Requirement
 
 
 def run(command: list[str], **kwargs) -> None:
     subprocess.run(command, check=True, **kwargs)
+
+
+def private_proxy_values(proxy: str) -> set[str]:
+    """Values to mask in runner output and remove from uploaded evidence."""
+    values = {proxy} if proxy else set()
+    password = urlsplit(proxy).password if proxy else None
+    if password:
+        values.update({password, unquote(password), quote(unquote(password), safe="")})
+    return values
+
+
+def redact_evidence(directory: Path, values: set[str]) -> None:
+    for path in directory.rglob("*.xml"):
+        content = path.read_text(encoding="utf-8")
+        for value in sorted(values, key=len, reverse=True):
+            content = content.replace(value, "[REDACTED]")
+        path.write_text(content, encoding="utf-8")
 
 
 def fetch_published(version: str, destination: Path) -> tuple[Path, Path]:
@@ -55,6 +73,10 @@ def main() -> None:
     parser.add_argument("--preflight", action="store_true", help="Run only the bounded live connectivity check")
     parser.add_argument("--evidence-dir", type=Path, default=Path("ci-results"))
     args = parser.parse_args()
+    private_values = private_proxy_values(os.environ.get("METAADS_CI_PROXY", ""))
+    if os.environ.get("GITHUB_ACTIONS") == "true":
+        for value in private_values:
+            print("::add-mask::" + value.replace("%", "%25").replace("\r", "%0D").replace("\n", "%0A"), flush=True)
     if args.preflight and not args.live:
         parser.error("--preflight requires --live")
     root = Path(__file__).resolve().parents[1]
@@ -99,7 +121,7 @@ def main() -> None:
                 relative = Path(*Path(member.name).parts[1:])
                 if not member.isfile() or not relative.parts:
                     continue
-                if relative.parts[0] != "tests" and str(relative) != "pyproject.toml":
+                if relative.parts[0] not in {"tests", "scripts"} and str(relative) != "pyproject.toml":
                     continue
                 destination = (suite / relative).resolve()
                 if suite.resolve() not in destination.parents:
@@ -129,13 +151,16 @@ def main() -> None:
             env["METAADS_AUDIT_MIN_PYTHON"] = str(python)
         label = "preflight" if args.preflight else "live" if args.live else "minimum" if args.minimum else "wheel"
         target = "tests/test_live_preflight.py" if args.preflight else "tests"
-        command = [str(python), "-I", "-m", "pytest", target, "-q",
+        command = [str(python), "-I", "-m", "pytest", target, "-v",
                    f"--junitxml={evidence / (label + '.xml')}"]
         if args.live:
             command += ["--run-integration", "-m", "integration", "-k", "not controlled"]
         else:
             command += ["-m", "not integration"]
-        run(command, cwd=suite, env=env)
+        try:
+            run(command, cwd=suite, env=env)
+        finally:
+            redact_evidence(evidence, private_values)
 
 
 if __name__ == "__main__":

@@ -51,7 +51,8 @@ def test_published_sdist_includes_support_for_the_tests_it_ships(tmp_path):
         names = {"/".join(name.split("/")[1:]) for name in archive.getnames()}
     required = {
         "tests/__init__.py", "tests/utils.py", "tests/conftest.py", "tests/audit_meta_samples.py",
-        "tests/meta_full_sample.py", "tests/meta_forward_proxy.py", "tests/test_all_meta_fields.py",
+        "tests/meta_full_sample.py", "tests/meta_forward_proxy.py", "tests/ci_network.py",
+        "tests/test_all_meta_fields.py",
         "tests/test_live_proxy_transport.py", "scripts/check_distribution.py",
     }
     required.update(f"tests/{path.name}" for path in Path(__file__).parent.glob("test_*.py"))

@@ -8,11 +8,70 @@ from __future__ import annotations
 
 import base64
 import contextlib
+import os
 import select
 import socket
 import socketserver
+import ssl
 import threading
 from http.server import BaseHTTPRequestHandler, ThreadingHTTPServer
+from urllib.parse import unquote, urlsplit
+
+from meta_ads_collector.proxy_pool import parse_proxy
+
+
+def _connect_remote(host, port, upstream, server_name=None):
+    """Open an opaque Meta tunnel, optionally through a private CI proxy."""
+    if not upstream:
+        return socket.create_connection((host, port), timeout=30)
+    proxy = urlsplit(upstream)
+    username = unquote(proxy.username) if proxy.username is not None else None
+    password = unquote(proxy.password) if proxy.password is not None else None
+    if proxy.scheme in {"http", "https"}:
+        remote = socket.create_connection((proxy.hostname, proxy.port), timeout=30)
+        try:
+            if proxy.scheme == "https":
+                import certifi
+                context = ssl.create_default_context(cafile=certifi.where())
+                remote = context.wrap_socket(remote, server_hostname=proxy.hostname)
+            target = f"[{host}]:{port}" if ":" in host else f"{host}:{port}"
+            # Residential gateways can require the original hostname in Host
+            # even when the SOCKS client supplied a locally resolved Meta IP.
+            # Preserve that IP in the CONNECT request target.
+            authority = f"{server_name}:{port}" if server_name else target
+            lines = [f"CONNECT {target} HTTP/1.1", f"Host: {authority}"]
+            if username is not None:
+                credential = base64.b64encode(f"{username}:{password or ''}".encode()).decode()
+                lines.append(f"Proxy-Authorization: Basic {credential}")
+            remote.sendall(("\r\n".join(lines) + "\r\n\r\n").encode())
+            header = b""
+            while not header.endswith(b"\r\n\r\n") and len(header) < 16384:
+                byte = remote.recv(1)
+                if not byte:
+                    raise OSError("Upstream proxy closed the CONNECT handshake")
+                header += byte
+            if not header.endswith(b"\r\n\r\n"):
+                raise OSError("Upstream proxy CONNECT headers exceeded the limit")
+            status = header.split(b"\r\n", 1)[0].split()
+            if len(status) < 2 or status[1] != b"200":
+                raise OSError("Upstream proxy refused the CONNECT tunnel")
+            return remote
+        except Exception:
+            remote.close()
+            raise
+    import socks
+    kind = socks.SOCKS4 if proxy.scheme in {"socks4", "socks4a"} else socks.SOCKS5
+    remote = socks.socksocket()
+    try:
+        remote.set_proxy(kind, proxy.hostname, proxy.port,
+                         rdns=proxy.scheme in {"socks4a", "socks5h"},
+                         username=username, password=password)
+        remote.settimeout(30)
+        remote.connect((host, port))
+        return remote
+    except Exception:
+        remote.close()
+        raise
 
 
 class MetaForwardProxy:
@@ -20,6 +79,8 @@ class MetaForwardProxy:
         self.connections: list[str] = []
         self.username = username
         self.password = password
+        configured = os.environ.get("METAADS_CI_PROXY")
+        self.upstream = parse_proxy(configured) if configured else None
         self.stop = threading.Event()
         owner = self
 
@@ -43,7 +104,7 @@ class MetaForwardProxy:
                     self.send_error(403)
                     return
                 try:
-                    remote = socket.create_connection((host, int(port)), timeout=30)
+                    remote = _connect_remote(host, int(port), owner.upstream)
                 except OSError:
                     self.send_error(502)
                     return
@@ -93,8 +154,13 @@ class MetaSocksProxy(MetaForwardProxy):
 
     def __init__(self, username: str, password: str):
         self.connections = []
+        self.meta_addresses = {
+            row[4][0] for row in socket.getaddrinfo("www.facebook.com", 443, type=socket.SOCK_STREAM)
+        }
         self.username = username
         self.password = password
+        configured = os.environ.get("METAADS_CI_PROXY")
+        self.upstream = parse_proxy(configured) if configured else None
         self.stop = threading.Event()
         owner = self
 
@@ -136,7 +202,8 @@ class MetaSocksProxy(MetaForwardProxy):
                     port = int.from_bytes(self.rfile.read(2), "big")
                     if port != 443:
                         return
-                    with socket.create_connection((host, port), timeout=30) as remote:
+                    server_name = "www.facebook.com" if host in owner.meta_addresses else None
+                    with _connect_remote(host, port, owner.upstream, server_name) as remote:
                         owner.connections.append(host)
                         self.wfile.write(b"\x05\x00\x00\x01\x00\x00\x00\x00\x00\x00")
                         while not owner.stop.is_set():

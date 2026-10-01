@@ -51,6 +51,7 @@ dev = [
     "pytest-cov>=4.0",
     "pytest-asyncio>=0.21",
     "requests>=2.28.0",
+    "PySocks>=1.7.1",
     "ruff>=0.4",
     "mypy>=1.0",
     "build>=1.2",
