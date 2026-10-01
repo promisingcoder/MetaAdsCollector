@@ -13,7 +13,7 @@ tracker = DeduplicationTracker(mode="memory")
 
 with MetaAdsCollector() as collector:
     for ad in collector.search(query="test", dedup_tracker=tracker):
-        print(ad.id)  # IDs are deduplicated as the iterator is consumed.
+        print(ad.id)  # This ID is recorded before the ad is yielded.
 
 print(f"Unique ads: {tracker.count()}")
 ```
@@ -29,10 +29,10 @@ tracker = DeduplicationTracker(mode="persistent", db_path="collection_state.db")
 
 with MetaAdsCollector() as collector:
     for ad in collector.search(query="test", dedup_tracker=tracker):
-        print(ad.id)  # Skips ads seen in any previous run
+        print(ad.id)  # Skips ads already recorded in any previous run
 tracker.close()
 
-# The search generator saves tracker state and updates the last-collection time in its finalization logic when it finishes or is closed. The guarantee applies when the iterator is fully consumed; stopping immediately after a yield can stop before that ad is recorded.
+# The search generator saves yielded ad IDs when it finishes or is closed. It advances the last-collection time only when the search reaches the end without parse errors or an unmet result limit. Closing early or stopping at a limit preserves yielded IDs but leaves the last-collection time unchanged.
 ```
 
 The SQLite database contains two tables:

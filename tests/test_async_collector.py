@@ -2,17 +2,10 @@
 
 from __future__ import annotations
 
-import importlib.util
 import inspect
 from unittest.mock import AsyncMock, MagicMock
 
 import pytest
-
-# Skip all tests if httpx is not installed
-HAS_HTTPX = importlib.util.find_spec("httpx") is not None
-
-pytestmark = pytest.mark.skipif(not HAS_HTTPX, reason="httpx not installed")
-
 
 # ---------------------------------------------------------------------------
 # API mirroring

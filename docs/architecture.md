@@ -1,6 +1,6 @@
 # Architecture
 
-This page describes the main components in MetaAdsCollector 1.4.2. It is a source-oriented overview; Meta's internal endpoints and response formats can change independently of this package.
+This page describes the main components in MetaAdsCollector 1.4.3. It is a source-oriented overview; Meta's internal endpoints and response formats can change independently of this package.
 
 ## Components
 

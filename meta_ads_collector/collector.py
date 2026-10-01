@@ -340,11 +340,21 @@ class MetaAdsCollector:
 
         country = country.upper()
         self._validate_params(ad_type, status, search_type, sort_by, country)
+        if max_results is not None and (
+            isinstance(max_results, bool)
+            or not isinstance(max_results, int)
+            or max_results < 0
+        ):
+            raise InvalidParameterError(
+                "max_results", max_results, "a non-negative integer or None"
+            )
 
         self.stats["start_time"] = datetime.now(timezone.utc)
         cursor = None
         collected = 0
         page_number = 0
+        search_completed = False
+        had_parse_errors = False
         search_start_time = time.monotonic()
 
         # Generate consistent session_id and collation_token for the entire search
@@ -367,7 +377,7 @@ class MetaAdsCollector:
         try:
             while True:
                 # Check if we've hit our limit
-                if max_results and collected >= max_results:
+                if max_results is not None and collected >= max_results:
                     logger.info(f"Reached max_results limit: {max_results}")
                     break
 
@@ -462,6 +472,7 @@ class MetaAdsCollector:
 
                 if not ads_data:
                     logger.info("No more results returned")
+                    search_completed = not had_parse_errors
                     break
 
                 # Emit page_fetched after processing the page
@@ -472,8 +483,10 @@ class MetaAdsCollector:
                     "has_next_page": has_next,
                 })
 
+                limit_reached = False
                 for ad_data in ads_data:
-                    if max_results and collected >= max_results:
+                    if max_results is not None and collected >= max_results:
+                        limit_reached = True
                         break
 
                     try:
@@ -487,31 +500,51 @@ class MetaAdsCollector:
                         if filter_config is not None and not passes_filter(ad, filter_config):
                             continue
 
-                        collected += 1
-                        self.stats["ads_collected"] += 1
-
-                        if progress_callback:
-                            progress_callback(collected, max_results or -1)
-
-                        self.event_emitter.emit(AD_COLLECTED, {"ad": ad})
-                        yield ad
-
-                        # Mark ad as seen after successful yield
-                        if dedup_tracker is not None:
-                            dedup_tracker.mark_seen(ad.id)
-
                     except Exception as e:
                         logger.warning(f"Failed to parse ad: {e}")
                         self.stats["errors"] += 1
+                        had_parse_errors = True
                         self.event_emitter.emit(ERROR_OCCURRED, {
                             "exception": e,
                             "context": "Failed to parse ad from response",
                         })
                         continue
 
+                    next_collected = collected + 1
+                    if progress_callback:
+                        try:
+                            progress_callback(
+                                next_collected,
+                                max_results if max_results is not None else -1,
+                            )
+                        except Exception as e:
+                            self.stats["errors"] += 1
+                            self.event_emitter.emit(ERROR_OCCURRED, {
+                                "exception": e,
+                                "context": "Progress callback failed",
+                            })
+                            raise
+
+                    collected = next_collected
+                    self.stats["ads_collected"] += 1
+                    if dedup_tracker is not None:
+                        # Persist an ad before handing it to the caller so an
+                        # early iterator close cannot lose its dedup record.
+                        dedup_tracker.mark_seen(ad.id)
+                    self.event_emitter.emit(AD_COLLECTED, {"ad": ad})
+                    yield ad
+
+                if limit_reached:
+                    break
+
                 # Check for next page
                 if not next_cursor:
                     logger.info("No more pages available")
+                    search_completed = not had_parse_errors
+                    break
+
+                if max_results is not None and collected >= max_results:
+                    # The cursor proves that results remain beyond this limit.
                     break
 
                 cursor = next_cursor
@@ -525,7 +558,8 @@ class MetaAdsCollector:
             duration = time.monotonic() - search_start_time
             # Finalise deduplication tracker
             if dedup_tracker is not None:
-                dedup_tracker.update_collection_time()
+                if search_completed:
+                    dedup_tracker.update_collection_time()
                 dedup_tracker.save()
             logger.info(f"Search completed: {collected} ads collected")
             self.event_emitter.emit(COLLECTION_FINISHED, {

@@ -176,7 +176,7 @@ with MetaAdsCollector() as collector:
 | `search_type` | `str` | `SEARCH_KEYWORD` | `KEYWORD_EXACT_PHRASE`, `KEYWORD_UNORDERED`, `PAGE` |
 | `page_ids` | `list[str]` | `None` | Filter by specific page IDs |
 | `sort_by` | `str` | `SORT_IMPRESSIONS` | `SORT_BY_TOTAL_IMPRESSIONS` or `None` (relevancy) |
-| `max_results` | `int` | `None` | Maximum ads to collect (None = unlimited) |
+| `max_results` | `int` | `None` | Maximum ads to collect (`None` = unlimited, `0` = return no ads; negative or non-integer values raise `InvalidParameterError`) |
 | `page_size` | `int` | `10` | Results per API request (max ~30) |
 | `filter_config` | `FilterConfig` | `None` | Client-side filter configuration |
 | `dedup_tracker` | `DeduplicationTracker` | `None` | Deduplication tracker |
@@ -239,7 +239,7 @@ tracker = DeduplicationTracker(mode="memory")
 
 with MetaAdsCollector() as collector:
     for ad in collector.search(query="test", dedup_tracker=tracker):
-        print(ad.id)  # Duplicate IDs are skipped when the search iterator is fully consumed.
+        print(ad.id)  # This ID is recorded before the ad is yielded.
 
 print(f"Unique ads seen: {tracker.count()}")
 ```
@@ -251,8 +251,8 @@ from meta_ads_collector import MetaAdsCollector, DeduplicationTracker
 
 tracker = DeduplicationTracker(mode="persistent", db_path="collection_state.db")
 with MetaAdsCollector() as collector:
-    # Only collect ads not seen in previous runs. Consume the iterator fully
-    # so its completion/finalization logic can save tracker state.
+    # Only collect ads not seen in previous runs. Yielded IDs are recorded
+    # immediately; the last-run timestamp advances only after a complete search.
     for ad in collector.search(query="test", dedup_tracker=tracker):
         print(ad.id)
 tracker.close()

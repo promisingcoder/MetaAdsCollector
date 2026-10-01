@@ -1,6 +1,6 @@
 # API Reference
 
-Reference for the main public classes, methods, and functions in `meta-ads-collector` version 1.4.2. Optional values and methods can vary by result shape; use `help()` or inspect the installed version when working with another release.
+Reference for the main public classes, methods, and functions in `meta-ads-collector` version 1.4.3. Optional values and methods can vary by result shape; use `help()` or inspect the installed version when working with another release.
 
 ## Table of Contents
 
@@ -66,13 +66,15 @@ Search for ads and yield results as an iterator.
 | `search_type` | `str` | `"KEYWORD_UNORDERED"` | Search type (`"KEYWORD_EXACT_PHRASE"`, `"KEYWORD_UNORDERED"`, `"PAGE"`) |
 | `page_ids` | `list[str] \| None` | `None` | Filter by specific page IDs |
 | `sort_by` | `str \| None` | `"SORT_BY_TOTAL_IMPRESSIONS"` | Sort order (`"SORT_BY_TOTAL_IMPRESSIONS"` or `None` for relevancy) |
-| `max_results` | `int \| None` | `None` | Maximum ads to collect (`None` = no limit) |
+| `max_results` | `int \| None` | `None` | Maximum ads to collect (`None` = no limit; `0` = no ads; negative or non-integer values are rejected) |
 | `page_size` | `int` | `10` | Results per API request (max ~30) |
 | `progress_callback` | `Callable[[int, int], None] \| None` | `None` | Callback `(collected, total)` for progress |
 | `filter_config` | `FilterConfig \| None` | `None` | Client-side filter configuration |
 | `dedup_tracker` | `DeduplicationTracker \| None` | `None` | Deduplication tracker |
 
 **Returns:** `Iterator[Ad]`
+
+If a `progress_callback` raises, its exception propagates to the caller and the current ad is not counted or marked as seen.
 
 #### `collect(query, country, ad_type, status, search_type, page_ids, sort_by, max_results, page_size) -> list[Ad]`
 
