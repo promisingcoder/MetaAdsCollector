@@ -91,6 +91,70 @@ jobs:
         with:
           name: live-connectivity-tests
           path: ci-results/
+  mcp-tests:
+    strategy:
+      fail-fast: false
+      matrix:
+        python: ["3.10", "3.11", "3.12", "3.13", "3.14"]
+        os: [ubuntu-latest]
+        include:
+          - python: "3.12"
+            os: windows-latest
+    runs-on: ${{ matrix.os }}
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: ${{ matrix.python }}
+      - run: python -m pip install -e ".[dev,mcp]"
+      - name: MCP contracts, storage, jobs, recovery and actual stdio protocol
+        run: python -m pytest mcp/tests -m "not mcp_live" --cov=meta_ads_collector_mcp --cov-branch --junitxml=mcp/test-results/unit.xml
+      - uses: actions/upload-artifact@v4
+        if: always()
+        with:
+          name: mcp-${{ matrix.os }}-${{ matrix.python }}
+          path: mcp/test-results/
+  mcp-distribution:
+    needs: [distribution, mcp-tests]
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+      - uses: actions/download-artifact@v4
+        with:
+          name: release-distributions
+          path: dist/
+      - name: Installed optional extra outside checkout
+        run: python mcp/check_distribution.py
+      - uses: actions/upload-artifact@v4
+        if: always()
+        with:
+          name: mcp-wheel-tests
+          path: mcp/test-results/
+  mcp-live:
+    needs: [mcp-distribution, live-connectivity]
+    runs-on: macos-latest
+    timeout-minutes: 20
+    env:
+      METAADS_CI_PROXY: ${{ secrets.METAADS_CI_PROXY }}
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+      - uses: actions/download-artifact@v4
+        with:
+          name: release-distributions
+          path: dist/
+      - name: Actual Meta through installed MCP extra, including worker crash recovery
+        run: python mcp/check_distribution.py --live
+      - uses: actions/upload-artifact@v4
+        if: always()
+        with:
+          name: mcp-live-tests
+          path: mcp/test-results/
   live-meta:
     needs: [live-connectivity]
     runs-on: macos-latest
