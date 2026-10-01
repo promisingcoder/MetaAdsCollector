@@ -381,7 +381,10 @@ class MediaDownloader:
                         ext = detect_extension_from_url(url) or ".bin"
                         filename = self._build_filename(ad.id, idx, media_type, ext)
                         local_path = self.output_dir / filename
-                        if not local_path.resolve().is_relative_to(self.output_dir):
+                        # Atomic replacement replaces a leaf symlink itself;
+                        # reject escaped parent directories rather than
+                        # following the existing destination during validation.
+                        if not local_path.parent.resolve().is_relative_to(self.output_dir):
                             raise ValueError("Resolved media path is outside output directory")
 
                         resolved_paths: list[Path] = []

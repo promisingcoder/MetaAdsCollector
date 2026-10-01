@@ -420,6 +420,25 @@ def test_media_cache_does_not_trust_symlink_outside_output_directory(tmp_path: P
     assert Path(result.local_path or "").resolve().is_relative_to(out.resolve())
 
 
+def test_media_destination_validation_checks_parent_before_atomic_replacement(tmp_path, monkeypatch):
+    """Portable fault injection for outside-target leaf resolution, without OS symlink privileges."""
+    ad = _ad(video_url=_captured_video_url())
+    downloader = MediaDownloader(tmp_path / "parent-check", session=MagicMock(), max_retries=1)
+    destination = downloader.output_dir / downloader._build_filename(ad.id, 0, "video_hd", ".mp4")
+    outside = tmp_path / "outside-target"
+    original_resolve = Path.resolve
+
+    def leaf_resolves_outside(path, *args, **kwargs):
+        return outside if path == destination else original_resolve(path, *args, **kwargs)
+
+    monkeypatch.setattr(Path, "resolve", leaf_resolves_outside)
+    downloader._download_file = MagicMock(return_value=(False, "transport probe", None))
+    result = downloader.download_ad_media(ad)[0]
+
+    downloader._download_file.assert_called_once()
+    assert result.error == "transport probe"
+
+
 def test_webhook_flush_keeps_real_payload_after_delivery_failure() -> None:
     """A failed localhost delivery leaves the captured ad available to retry."""
     received: list[dict] = []
