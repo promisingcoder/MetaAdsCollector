@@ -7,10 +7,26 @@ automatic dead-proxy exclusion, and cooldown-based recovery.
 
 import logging
 import time
+from urllib.parse import quote, urlsplit
 
 from .exceptions import ProxyError
 
 logger = logging.getLogger(__name__)
+
+
+def _redact_proxy(proxy: str) -> str:
+    """Return a log-safe proxy label without credentials or query values."""
+    try:
+        parsed = urlsplit(proxy)
+        if parsed.scheme and parsed.netloc:
+            host = parsed.hostname or "unknown-host"
+            if parsed.port is not None:
+                host = f"[{host}]:{parsed.port}" if ":" in host else f"{host}:{parsed.port}"
+            auth = "***@" if parsed.username is not None or parsed.password is not None else ""
+            return f"{parsed.scheme}://{auth}{host}"
+    except ValueError:
+        pass
+    return "<invalid-proxy>"
 
 
 def parse_proxy(proxy_string: str) -> str:
@@ -35,22 +51,55 @@ def parse_proxy(proxy_string: str) -> str:
     if not stripped:
         raise ProxyError("Empty proxy string")
 
-    # Already a URL?
+    # Already a URL?  Validate only the transport fields and never echo the
+    # supplied value, since it may include credentials.
     if "://" in stripped:
+        try:
+            parsed = urlsplit(stripped)
+            url_port = parsed.port
+            if (
+                parsed.scheme.lower() not in {"http", "https", "socks4", "socks4a", "socks5", "socks5h"}
+                or not parsed.hostname
+                or url_port is None
+                or not 1 <= url_port <= 65535
+                or any(char.isspace() for char in parsed.hostname)
+            ):
+                raise ValueError
+        except ValueError:
+            raise ProxyError("Invalid proxy URL. Expected a supported scheme, host, and port.") from None
         return stripped
 
-    parts = stripped.split(":")
+    parts = stripped.split(":", 3)
     if len(parts) == 2:
         host, port = parts
+        _validate_host_port(host, port)
         return f"http://{host}:{port}"
     elif len(parts) == 4:
         host, port, user, password = parts
-        return f"http://{user}:{password}@{host}:{port}"
+        _validate_host_port(host, port)
+        if not user:
+            raise ProxyError("Invalid proxy format. Username cannot be empty.")
+        encoded_user = quote(user, safe="")
+        encoded_password = quote(password, safe="")
+        return f"http://{encoded_user}:{encoded_password}@{host}:{port}"
     else:
         raise ProxyError(
-            f"Invalid proxy format: {proxy_string!r}. "
-            "Expected host:port, host:port:user:pass, or a URL."
+            "Invalid proxy format. Expected host:port, host:port:user:pass, or a URL."
         )
+
+
+def _validate_host_port(host: str, port: str) -> None:
+    """Validate legacy host/port fields without including them in errors."""
+    if not port.isascii() or not port.isdigit():
+        raise ProxyError("Invalid proxy host or port.") from None
+    parsed_port = int(port)
+    if (
+        not host
+        or any(char.isspace() for char in host)
+        or any(char in host for char in "/?#@")
+        or not 1 <= parsed_port <= 65535
+    ):
+        raise ProxyError("Invalid proxy host or port.")
 
 
 class ProxyPool:
@@ -172,7 +221,7 @@ class ProxyPool:
         self._failures[proxy] = 0
         if proxy in self._dead_since:
             del self._dead_since[proxy]
-            logger.info("Proxy revived after success: %s", proxy)
+            logger.info("Proxy revived after success: %s", _redact_proxy(proxy))
 
     def mark_failure(self, proxy: str) -> None:
         """Record a failed request through the given proxy.
@@ -186,11 +235,11 @@ class ProxyPool:
         self._failures[proxy] = self._failures.get(proxy, 0) + 1
         count = self._failures[proxy]
         logger.debug(
-            "Proxy failure %d/%d: %s", count, self.max_failures, proxy
+            "Proxy failure %d/%d: %s", count, self.max_failures, _redact_proxy(proxy)
         )
         if count >= self.max_failures and proxy not in self._dead_since:
             self._dead_since[proxy] = time.time()
-            logger.warning("Proxy marked as dead: %s", proxy)
+            logger.warning("Proxy marked as dead: %s", _redact_proxy(proxy))
 
     def reset(self) -> None:
         """Reset all failure counters and revive all dead proxies."""

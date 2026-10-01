@@ -12,6 +12,9 @@ from __future__ import annotations
 
 import contextlib
 import logging
+import os
+import re
+import tempfile
 import time
 from dataclasses import dataclass
 from pathlib import Path
@@ -169,7 +172,7 @@ class MediaDownloader:
         timeout: int = 30,
         max_retries: int = 2,
     ) -> None:
-        self.output_dir = Path(output_dir)
+        self.output_dir = Path(output_dir).expanduser().resolve()
         self.output_dir.mkdir(parents=True, exist_ok=True)
         self.session = session or CffiSession(impersonate="chrome")
         self.timeout = timeout
@@ -199,12 +202,15 @@ class MediaDownloader:
 
         Convention: ``{ad_id}_{creative_index}_{media_type}.{ext}``
         """
-        return f"{ad_id}_{creative_index}_{media_type}{ext}"
+        safe_id = re.sub(r"[^A-Za-z0-9_-]", "_", str(ad_id)).strip("_")
+        safe_id = (safe_id or "ad")[:128]
+        return f"{safe_id}_{creative_index}_{media_type}{ext}"
 
     def _download_file(
         self,
         url: str,
         local_path: Path,
+        resolved_path: list[Path] | None = None,
     ) -> tuple[bool, str | None, int | None]:
         """Download a single file from *url* to *local_path*.
 
@@ -215,10 +221,38 @@ class MediaDownloader:
         """
         # Skip if file already exists with non-zero size
         try:
-            if local_path.exists() and local_path.stat().st_size > 0:
+            resolved_local = local_path.resolve()
+            if (
+                resolved_local.is_relative_to(self.output_dir)
+                and local_path.is_file()
+                and local_path.stat().st_size > 0
+            ):
                 size = local_path.stat().st_size
                 logger.debug("Skipping existing file: %s (%d bytes)", local_path, size)
+                if resolved_path is not None:
+                    resolved_path.append(resolved_local)
                 return True, None, size
+            # For extension-less URLs the first response's Content-Type picks
+            # the final extension (for example, ``.jpg``).  On the next call
+            # the URL still suggests ``.bin`` before the response arrives, so
+            # recognize the already-downloaded sibling instead of fetching it
+            # again.  Match only the exact filename stem to avoid confusing
+            # another creative or media type with this cache entry.
+            if local_path.suffix == ".bin":
+                cached = sorted(
+                    candidate for candidate in local_path.parent.glob(f"{local_path.stem}.*")
+                    if candidate != local_path and candidate.is_file()
+                    and not candidate.name.endswith(".part")
+                    and candidate.resolve().is_relative_to(self.output_dir)
+                    and candidate.stat().st_size > 0
+                )
+                if cached:
+                    cache_path = cached[0].resolve()
+                    size = cache_path.stat().st_size
+                    logger.debug("Skipping existing file: %s (%d bytes)", cache_path, size)
+                    if resolved_path is not None:
+                        resolved_path.append(cache_path)
+                    return True, None, size
         except Exception as exc:
             # Stat failures should not prevent a download attempt
             logger.debug("Could not stat existing file %s: %s", local_path, exc)
@@ -226,6 +260,7 @@ class MediaDownloader:
         last_error: str | None = None
 
         for attempt in range(self.max_retries):
+            partial_path: Path | None = None
             try:
                 response = self.session.get(
                     url, stream=True, timeout=self.timeout, allow_redirects=True,
@@ -240,7 +275,14 @@ class MediaDownloader:
                     local_path = local_path.with_suffix(ext)
 
                 bytes_written = 0
-                with open(local_path, "wb") as fh:
+                with tempfile.NamedTemporaryFile(
+                    mode="wb",
+                    dir=local_path.parent,
+                    prefix=f".{local_path.name}.",
+                    suffix=".part",
+                    delete=False,
+                ) as fh:
+                    partial_path = Path(fh.name)
                     for chunk in response.iter_content(chunk_size=_CHUNK_SIZE):
                         if chunk:
                             fh.write(chunk)
@@ -251,9 +293,13 @@ class MediaDownloader:
                     logger.warning("Empty download for %s", url)
                     # Remove the empty file
                     with contextlib.suppress(Exception):
-                        local_path.unlink(missing_ok=True)
+                        partial_path.unlink(missing_ok=True)
                     continue
 
+                os.replace(partial_path, local_path)
+                partial_path = None
+                if resolved_path is not None:
+                    resolved_path.append(local_path.resolve())
                 logger.debug("Downloaded %s (%d bytes)", local_path, bytes_written)
                 return True, None, bytes_written
 
@@ -292,6 +338,10 @@ class MediaDownloader:
                     "Unexpected error on attempt %d/%d for %s: %s",
                     attempt + 1, self.max_retries, url, exc,
                 )
+            finally:
+                if partial_path is not None:
+                    with contextlib.suppress(Exception):
+                        partial_path.unlink(missing_ok=True)
 
             # Exponential backoff between retries
             if attempt < self.max_retries - 1:
@@ -331,17 +381,26 @@ class MediaDownloader:
                         ext = detect_extension_from_url(url) or ".bin"
                         filename = self._build_filename(ad.id, idx, media_type, ext)
                         local_path = self.output_dir / filename
+                        if not local_path.resolve().is_relative_to(self.output_dir):
+                            raise ValueError("Resolved media path is outside output directory")
 
-                        success, error, file_size = self._download_file(url, local_path)
+                        resolved_paths: list[Path] = []
+                        success, error, file_size = self._download_file(
+                            url, local_path, resolved_path=resolved_paths,
+                        )
 
                         # The actual local_path may have changed extension
                         # after Content-Type resolution.  Check what exists.
                         actual_path: str | None = None
                         if success:
                             # Find the file (extension may have changed)
-                            pattern = f"{ad.id}_{idx}_{media_type}.*"
+                            safe_stem = Path(filename).stem
+                            pattern = f"{safe_stem}.*"
                             matches = list(self.output_dir.glob(pattern))
-                            actual_path = str(matches[0]) if matches else str(local_path)
+                            chosen_path = resolved_paths[0] if resolved_paths else (
+                                matches[0].resolve() if matches else local_path.resolve()
+                            )
+                            actual_path = str(chosen_path)
 
                         results.append(MediaDownloadResult(
                             ad_id=ad.id,

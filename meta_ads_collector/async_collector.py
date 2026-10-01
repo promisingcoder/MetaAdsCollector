@@ -54,7 +54,12 @@ from .events import (
     SESSION_REFRESHED,
     EventEmitter,
 )
-from .exceptions import InvalidParameterError
+from .exceptions import (
+    InvalidParameterError,
+    MetaAdsError,
+    RateLimitError,
+    SessionExpiredError,
+)
 from .filters import FilterConfig, passes_filter
 from .models import Ad, PageSearchResult
 from .proxy_pool import ProxyPool
@@ -139,6 +144,8 @@ class AsyncMetaAdsCollector:
         self.stats: dict[str, Any] = {
             "requests_made": 0,
             "ads_collected": 0,
+            "duplicates_skipped": 0,
+            "filtered_out": 0,
             "pages_fetched": 0,
             "errors": 0,
             "start_time": None,
@@ -243,6 +250,8 @@ class AsyncMetaAdsCollector:
 
         self.stats["start_time"] = datetime.now(timezone.utc)
         cursor = None
+        seen_cursors: set[str] = set()
+        consecutive_empty_pages = 0
         collected = 0
         page_number = 0
         search_completed = False
@@ -272,23 +281,32 @@ class AsyncMetaAdsCollector:
                 retry_count = 0
                 max_retries_inner = 3
                 response = None
+                response_error: MetaAdsError | None = None
 
                 while retry_count < max_retries_inner:
                     try:
                         self.stats["requests_made"] += 1
-                        response, next_cursor = await self.client.search_ads(
-                            query=query,
-                            country=country,
-                            ad_type=ad_type,
-                            active_status=status,
-                            search_type=search_type,
-                            page_ids=page_ids,
-                            cursor=cursor,
-                            first=page_size,
-                            sort_mode=sort_by,
-                            session_id=search_session_id,
-                            collation_token=search_collation_token,
-                        )
+                        try:
+                            response, next_cursor = await self.client.search_ads(
+                                query=query,
+                                country=country,
+                                ad_type=ad_type,
+                                active_status=status,
+                                search_type=search_type,
+                                page_ids=page_ids,
+                                cursor=cursor,
+                                first=page_size,
+                                sort_mode=sort_by,
+                                session_id=search_session_id,
+                                collation_token=search_collation_token,
+                            )
+                        except MetaAdsError as client_error:
+                            self.stats["errors"] += 1
+                            self.event_emitter.emit(ERROR_OCCURRED, {
+                                "exception": client_error,
+                                "context": "Search client raised an error",
+                            })
+                            raise
 
                         if response.get("rate_limited"):
                             retry_count += 1
@@ -302,11 +320,15 @@ class AsyncMetaAdsCollector:
                                 continue
                             else:
                                 self.stats["errors"] += 1
+                                rate_limit_error: MetaAdsError = RateLimitError(
+                                    "Max retries exceeded due to rate limiting",
+                                    retry_after=wait_time,
+                                )
                                 self.event_emitter.emit(ERROR_OCCURRED, {
-                                    "exception": None,
+                                    "exception": rate_limit_error,
                                     "context": "Max retries exceeded due to rate limiting",
                                 })
-                                return
+                                raise rate_limit_error
 
                         if response.get("session_expired"):
                             retry_count += 1
@@ -318,16 +340,25 @@ class AsyncMetaAdsCollector:
                                 continue
                             else:
                                 self.stats["errors"] += 1
+                                session_expired_error = SessionExpiredError(
+                                    "Max retries exceeded due to session expiry"
+                                )
                                 self.event_emitter.emit(ERROR_OCCURRED, {
-                                    "exception": None,
+                                    "exception": session_expired_error,
                                     "context": "Max retries exceeded due to session expiry",
                                 })
-                                return
+                                raise session_expired_error
+
+                        if response.get("error"):
+                            response_error = MetaAdsError(str(response["error"]))
+                            break
 
                         self.stats["pages_fetched"] += 1
                         page_number += 1
                         break
 
+                    except MetaAdsError:
+                        raise
                     except Exception as e:
                         self.stats["errors"] += 1
                         self.event_emitter.emit(ERROR_OCCURRED, {
@@ -339,20 +370,43 @@ class AsyncMetaAdsCollector:
                             raise
                         await asyncio.sleep(3 * retry_count)
 
+                if response_error is not None:
+                    self.stats["errors"] += 1
+                    self.event_emitter.emit(ERROR_OCCURRED, {
+                        "exception": response_error,
+                        "context": "Search response contained an error",
+                    })
+                    raise response_error
+
                 if response is None:
                     break
 
                 ads_data = response.get("ads", [])
-                if not ads_data:
+
+                if not ads_data and not next_cursor:
                     search_completed = not had_parse_errors
                     break
 
-                has_next = bool(next_cursor)
                 self.event_emitter.emit(PAGE_FETCHED, {
                     "page_number": page_number,
                     "ads_on_page": len(ads_data),
-                    "has_next_page": has_next,
+                    "has_next_page": bool(next_cursor),
                 })
+
+                if not ads_data:
+                    consecutive_empty_pages += 1
+                    if consecutive_empty_pages > 25:
+                        empty_pages_error = MetaAdsError(
+                            "Exceeded 25 consecutive empty pages with pagination cursors"
+                        )
+                        self.stats["errors"] += 1
+                        self.event_emitter.emit(ERROR_OCCURRED, {
+                            "exception": empty_pages_error,
+                            "context": "Too many consecutive empty pages",
+                        })
+                        raise empty_pages_error
+                else:
+                    consecutive_empty_pages = 0
 
                 limit_reached = False
                 for ad_data in ads_data:
@@ -364,9 +418,15 @@ class AsyncMetaAdsCollector:
                         ad = Ad.from_graphql_response(ad_data)
 
                         if dedup_tracker is not None and dedup_tracker.has_seen(ad.id):
+                            self.stats["duplicates_skipped"] = (
+                                self.stats.get("duplicates_skipped", 0) + 1
+                            )
                             continue
 
                         if filter_config is not None and not passes_filter(ad, filter_config):
+                            self.stats["filtered_out"] = (
+                                self.stats.get("filtered_out", 0) + 1
+                            )
                             continue
 
                     except Exception as e:
@@ -413,7 +473,19 @@ class AsyncMetaAdsCollector:
                     # The cursor proves that results remain beyond this limit.
                     break
 
+                if next_cursor in seen_cursors:
+                    repeated_cursor_error = MetaAdsError(
+                        f"Repeated pagination cursor detected: {next_cursor!r}"
+                    )
+                    self.stats["errors"] += 1
+                    self.event_emitter.emit(ERROR_OCCURRED, {
+                        "exception": repeated_cursor_error,
+                        "context": "Repeated pagination cursor",
+                    })
+                    raise repeated_cursor_error
+
                 cursor = next_cursor
+                seen_cursors.add(next_cursor)
                 await self._delay()
 
         finally:
@@ -537,7 +609,7 @@ class AsyncMetaAdsCollector:
             "creative_link_url", "creative_image_url", "snapshot_url",
             "impressions_lower", "impressions_upper", "spend_lower",
             "spend_upper", "currency", "publisher_platforms", "languages",
-            "funding_entity", "disclaimer", "ad_type", "collected_at",
+            "funding_entity", "disclaimer", "ad_type", "collected_at", "api_fields",
         ]
 
         count = 0
@@ -578,6 +650,7 @@ class AsyncMetaAdsCollector:
                     "disclaimer": ad.disclaimer or "",
                     "ad_type": ad.ad_type or "",
                     "collected_at": ad.collected_at.isoformat(),
+                    "api_fields": json.dumps(ad.api_fields, ensure_ascii=False),
                 }
                 writer.writerow(row)
                 count += 1

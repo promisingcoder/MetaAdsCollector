@@ -1,35 +1,43 @@
 name: Publish to PyPI
-
 on:
   release:
     types: [published]
   workflow_dispatch:
-
+permissions:
+  contents: read
 jobs:
+  validate:
+    uses: ./.github/workflows/ci.yml
   publish:
+    needs: validate
     runs-on: ubuntu-latest
     environment: pypi
     permissions:
+      contents: read
       id-token: write
-
+    steps:
+      - uses: actions/download-artifact@v4
+        with:
+          name: release-distributions
+          path: dist/
+      - name: Publish validated artifacts with Trusted Publishing
+        uses: pypa/gh-action-pypi-publish@release/v1
+  verify-published:
+    needs: publish
+    runs-on: ubuntu-latest
+    timeout-minutes: 30
     steps:
       - uses: actions/checkout@v4
-
-      - name: Set up Python
-        uses: actions/setup-python@v5
+      - uses: actions/setup-python@v5
         with:
           python-version: "3.12"
-
-      - name: Install build tools
-        run: pip install build
-
-      - name: Build package
-        run: python -m build
-
-      - name: Verify package
-        run: |
-          pip install dist/*.whl
-          python -c "import meta_ads_collector; print(meta_ads_collector.__version__)"
-
-      - name: Publish to PyPI
-        uses: pypa/gh-action-pypi-publish@release/v1
+      - run: python -m pip install packaging
+      - name: Verify public PyPI wheel and minimum dependency
+        run: python scripts/check_distribution.py --published current --minimum
+      - name: Verify public PyPI package against real Meta
+        run: python scripts/check_distribution.py --published current --live
+      - uses: actions/upload-artifact@v4
+        if: always()
+        with:
+          name: published-package-tests
+          path: ci-results/

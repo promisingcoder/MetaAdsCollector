@@ -106,16 +106,10 @@ def collected_ads() -> list[Ad]:
             ads.append(ad)
             if len(ads) >= 15:
                 break
-    except Exception as exc:
-        logger.warning("Failed to collect ads for session fixture: %s", exc)
     finally:
         collector.close()
 
-    if not ads:
-        pytest.skip(
-            "Could not collect any ads from Meta API. "
-            "Network may be unavailable or API may have changed."
-        )
+    assert ads, "The broad live Meta query returned no ads; live functionality was not verified"
 
     return ads
 

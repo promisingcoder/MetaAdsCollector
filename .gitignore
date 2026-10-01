@@ -65,3 +65,8 @@ ad_media/
 
 # Log files
 *.log
+
+# Local functionality audit: findings and execution evidence
+metaads_audit_report.md
+_local_audit/
+ci-results/

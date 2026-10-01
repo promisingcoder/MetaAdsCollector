@@ -13,6 +13,10 @@
 
 MetaAdsCollector is a Python package published on [PyPI](https://pypi.org/project/meta-ads-collector/). Visit the [documentation website](https://promisingcoder.github.io/MetaAdsCollector/) for the [beginner's guide](https://promisingcoder.github.io/MetaAdsCollector/quickstart/) and the complete guides and API reference.
 
+## Complete returned data
+
+Every field supplied by Meta is retained in `ad.api_fields` and included in JSON/JSONL exports. CSV exports include an `api_fields` column containing the complete original response as JSON. Common fields also have typed attributes; fields Meta omits are not invented. Sync and async collection support pagination and HTTP/HTTPS/SOCKS proxies.
+
 ## Availability and limitations
 
 MetaAdsCollector uses internal Meta endpoints, not the supported Graph API. It does not require a Meta API key, but it is not an official Meta product or API. Meta can change the endpoints or access rules without notice; requests may fail, be challenged, or return incomplete results. Fields such as spend, impressions, and audience distributions are only present when Meta returns them for an ad. Review Meta's [Ad Library](https://www.facebook.com/ads/library/) and applicable terms before use.

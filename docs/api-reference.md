@@ -89,7 +89,7 @@ Additional parameters:
 | Parameter | Type | Default | Description |
 |---|---|---|---|
 | `output_path` | `str` | (required) | Path to the output JSON file |
-| `include_raw` | `bool` | `False` | Include raw API response data |
+| `include_raw` | `bool` | `False` | Also include the raw payload under the `raw_data` alias; `api_fields` is included by default |
 | `indent` | `int` | `2` | JSON indentation |
 
 #### `collect_to_csv(output_path, ...) -> int`
@@ -287,7 +287,7 @@ Normalized ad schema for the fields parsed by this package. Meta may omit fields
 | `currency` | `str \| None` | Currency code |
 | `age_gender_distribution` | `list[AudienceDistribution]` | Demographic distribution |
 | `region_distribution` | `list[AudienceDistribution]` | Geographic distribution |
-| `targeting` | `TargetingInfo \| None` | Reserved model field; `Ad.from_graphql_response()` does not currently populate it |
+| `targeting` | `TargetingInfo \| None` | Normalized age, gender, location, and interest fields when supplied by the response |
 | `estimated_audience_size_lower` | `int \| None` | Estimated audience lower bound |
 | `estimated_audience_size_upper` | `int \| None` | Estimated audience upper bound |
 | `publisher_platforms` | `list[str]` | Platforms (facebook, instagram, etc.) |
@@ -298,9 +298,20 @@ Normalized ad schema for the fields parsed by this package. Meta may omit fields
 | `ad_type` | `str \| None` | Ad category type |
 | `categories` | `list[str]` | Ad categories |
 | `beneficiary_payers` | `list[str]` | EU transparency beneficiary/payer info |
+| `ad_id` | `str \| None` | Additional Meta ad identifier when supplied |
+| `display_format` | `str \| None` | Creative display format reported by Meta |
+| `country_iso_code` | `str \| None` | Country code when supplied |
+| `targeted_or_reached_countries` | `Any` | Meta's country list, including its original nested shape |
+| `total_active_time` | `Any` | Meta's active-time value when supplied |
+| `regional_regulation_data` | `Any` | Regional regulatory data as returned |
+| `additional_info`, `ec_certificates`, `brazil_tax_id` | `Any` | Additional transparency fields as returned |
+| `page_is_deleted`, `contains_sensitive_content`, `contains_digital_created_media`, `is_aaa_eligible` | `bool \| None` | Meta eligibility and content flags |
+| `has_user_reported`, `report_count`, `hide_data_status`, `gated_type` | `Any` | Reporting and visibility fields as returned |
+| `branded_content`, `event`, `menu_items`, `is_reshared`, `root_reshared_post`, `fev_info` | `Any` | Additional response fields where present |
 | `collation_id` | `str \| None` | Collation group ID |
 | `collation_count` | `int \| None` | Number of collated variants |
-| `raw_data` | `dict \| None` | Raw API response (excluded from repr) |
+| `api_fields` | `dict \| None` | Deep copy of the complete API row, including unrecognized and nested fields; included in exports by default |
+| `raw_data` | `dict \| None` | Original API row retained for processing (excluded from repr); repeated in exports only with `include_raw=True` |
 | `collected_at` | `datetime` | When the ad was collected |
 | `collection_source` | `str` | Always `"meta_ads_library"` |
 

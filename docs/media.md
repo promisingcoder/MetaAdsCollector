@@ -128,4 +128,4 @@ meta-ads-collector -q "tech" --download-media --media-dir /data/ad_media -o tech
 
 Downloads retry up to `max_retries` times (default 2) with exponential backoff. The downloader treats HTTP 403 as a likely expired URL and does not retry it; a 403 response alone does not establish why access was denied.
 
-Existing files with non-zero size are skipped automatically.
+Completed files with non-zero size are skipped automatically. Downloads use temporary files and are renamed only after success; interrupted `.part` files are never treated as completed downloads. Returned paths are absolute, and filenames are confined to the output directory.

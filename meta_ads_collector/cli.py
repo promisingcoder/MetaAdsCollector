@@ -458,7 +458,7 @@ def _write_ads_to_file(
             "creative_image_url", "snapshot_url", "impressions_lower",
             "impressions_upper", "spend_lower", "spend_upper", "currency",
             "publisher_platforms", "languages", "funding_entity", "disclaimer",
-            "ad_type", "collected_at",
+            "ad_type", "collected_at", "api_fields",
         ]
         with open(path, "w", newline="", encoding="utf-8") as f:
             writer = csv.DictWriter(f, fieldnames=columns)
@@ -491,6 +491,7 @@ def _write_ads_to_file(
                     "disclaimer": ad.disclaimer or "",
                     "ad_type": ad.ad_type or "",
                     "collected_at": ad.collected_at.isoformat(),
+                    "api_fields": _json.dumps(ad.api_fields, ensure_ascii=False),
                 }
                 writer.writerow(row)
                 count += 1
@@ -535,9 +536,9 @@ def _run_search_pages(args: argparse.Namespace) -> int:
     import json as _json
 
     logger = logging.getLogger(__name__)
-    proxy = _configure_proxy(args)
 
     try:
+        proxy = _configure_proxy(args)
         with MetaAdsCollector(
             proxy=proxy,
             rate_limit_delay=args.delay,
@@ -620,13 +621,20 @@ def main() -> int:
         logger.error("Supported formats: .json, .csv, .jsonl")
         return 1
 
-    # Configure proxy
-    proxy = _configure_proxy(args)
+    if getattr(args, "since_last_run", False) and not getattr(args, "state_file", None):
+        logger.error("--since-last-run requires --state-file PATH")
+        return 1
 
     # Create collector
     logger.info("Initializing Meta Ads Collector...")
 
     try:
+        try:
+            proxy = _configure_proxy(args)
+        except Exception as e:
+            logger.error("Proxy configuration failed: %s", e)
+            return 1
+
         with MetaAdsCollector(
             proxy=proxy,
             rate_limit_delay=args.delay,
@@ -728,19 +736,17 @@ def main() -> int:
             media_dir = getattr(args, "media_dir", "./ad_media")
 
             # ── Media-download path ──────────────────────────────
-            if download_media and params is not None:
+            if download_media:
                 media_stats: dict[str, int] = {
                     "attempted": 0, "succeeded": 0, "failed": 0, "total_bytes": 0,
                 }
 
-                def _ads_with_media_iter():
-                    """Wraps collect_with_media, yields ads for file writing and accumulates media stats."""
-                    for ad, results in collector.collect_with_media(
-                        media_output_dir=media_dir,
-                        **params,
-                    ):
+                def _ads_with_media_iter(ads_iter):
+                    """Enrich each ad before downloading its resulting media URLs."""
+                    for ad in ads_iter:
                         if enrich:
                             ad = collector.enrich_ad(ad)
+                        results = collector.download_ad_media(ad, output_dir=media_dir)
                         for r in results:
                             media_stats["attempted"] += 1
                             if r.success:
@@ -750,8 +756,16 @@ def main() -> int:
                                 media_stats["failed"] += 1
                         yield ad
 
+                if params is not None:
+                    media_ads_iter = collector.search(**params)
+                elif page_url:
+                    media_ads_iter = collector.collect_by_page_url(page_url, **page_kwargs)
+                else:
+                    media_ads_iter = collector.collect_by_page_name(page_name, **page_kwargs)
+
                 count = _write_ads_to_file(
-                    _ads_with_media_iter(), str(output_path), extension, args.include_raw,
+                    _ads_with_media_iter(media_ads_iter),
+                    str(output_path), extension, args.include_raw,
                 )
 
                 logger.info("Media download summary:")
@@ -821,8 +835,8 @@ def main() -> int:
 
                 report = CollectionReport(
                     total_collected=count,
-                    duplicates_skipped=0,
-                    filtered_out=0,
+                    duplicates_skipped=stats.get("duplicates_skipped", 0),
+                    filtered_out=stats.get("filtered_out", 0),
                     errors=stats.get("errors", 0),
                     duration_seconds=stats.get("duration_seconds", 0.0),
                     start_time=stats.get("start_time"),

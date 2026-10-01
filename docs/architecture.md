@@ -31,7 +31,7 @@ The exact internal request fields and response structure are implementation deta
 
 ## Data parsing
 
-`Ad.from_graphql_response()` accepts the response shapes currently handled by this version, including known snake-case and camel-case variants and multiple creative layouts. It normalizes common creative, page, delivery, and transparency data into the package's data classes. Use `include_raw=True` when exporting JSON if you need the raw response dictionary as well as the normalized fields.
+`Ad.from_graphql_response()` accepts the response shapes currently handled by this version, including known snake-case and camel-case variants and multiple creative layouts. It normalizes common creative, page, delivery, and transparency data into the package's data classes. The full response is retained in the read-only `api_fields` property and included in exports by default, including unknown and nested keys. `include_raw=True` additionally writes the same payload under the legacy `raw_data` key. Meta may omit fields; the parser does not fabricate values for them.
 
 The `Ad` schema is not a promise that Meta supplies every field. Some fields are category- or region-specific; others may be missing or change without notice. See the [API reference](api-reference.md) for the fields represented by the package.
 

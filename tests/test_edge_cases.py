@@ -799,7 +799,7 @@ class TestAdDateParsing:
             "ad_delivery_start_time": "2024-06-15T10:30:00",
         }
         ad = Ad.from_graphql_response(data)
-        assert ad.delivery_start_time == datetime(2024, 6, 15, 10, 30, 0)
+        assert ad.delivery_start_time == datetime(2024, 6, 15, 10, 30, 0, tzinfo=timezone.utc)
 
     def test_iso_string_with_z_suffix(self):
         """Date as ISO 8601 string with Z suffix."""
@@ -836,7 +836,7 @@ class TestAdDateParsing:
             "ad_delivery_stop_time": "2024-12-31T23:59:59",
         }
         ad = Ad.from_graphql_response(data)
-        assert ad.delivery_stop_time == datetime(2024, 12, 31, 23, 59, 59)
+        assert ad.delivery_stop_time == datetime(2024, 12, 31, 23, 59, 59, tzinfo=timezone.utc)
 
 
 class TestAdCamelCaseFields:
@@ -1050,21 +1050,19 @@ class TestFiltersMemeType:
         assert passes_filter(ad, fc) is False
 
 
-class TestFiltersStripTz:
-    """Cover _strip_tz helper (line 190)."""
+class TestFiltersNormalizeTz:
+    """Date comparisons normalize aware and naive datetimes to UTC."""
 
-    def test_strip_tz_aware_datetime(self):
-        """Should strip timezone from aware datetime."""
+    def test_aware_datetime_is_normalized_to_utc(self):
         dt = datetime(2024, 1, 1, 12, 0, 0, tzinfo=timezone.utc)
         result = _strip_tz(dt)
-        assert result.tzinfo is None
-        assert result == datetime(2024, 1, 1, 12, 0, 0)
+        assert result.tzinfo is timezone.utc
+        assert result == dt
 
-    def test_strip_tz_naive_datetime(self):
-        """Should return naive datetime unchanged."""
+    def test_naive_datetime_is_interpreted_as_utc(self):
         dt = datetime(2024, 1, 1, 12, 0, 0)
         result = _strip_tz(dt)
-        assert result is dt
+        assert result == dt.replace(tzinfo=timezone.utc)
 
     def test_date_filter_with_timezone_aware_ad(self):
         """Date filter with timezone-aware ad delivery time."""
@@ -1073,6 +1071,16 @@ class TestFiltersStripTz:
             delivery_start_time=datetime(2024, 6, 15, tzinfo=timezone.utc),
         )
         fc = FilterConfig(start_date=datetime(2024, 1, 1))
+        assert passes_filter(ad, fc) is True
+
+    def test_date_filter_compares_instants_across_offsets(self):
+        ad = Ad(
+            id="TZ-002",
+            delivery_start_time=datetime(2024, 1, 1, 12, tzinfo=timezone.utc),
+        )
+        # Same instant expressed in UTC-5 is equal; a wall-clock comparison
+        # would incorrectly reject it as earlier than 12:00.
+        fc = FilterConfig(end_date=datetime.fromisoformat("2024-01-01T07:00:00-05:00"))
         assert passes_filter(ad, fc) is True
 
 

@@ -117,8 +117,12 @@ class WebhookSender:
         if not self._buffer:
             return True
         items = list(self._buffer)
-        self._buffer.clear()
-        return self.send_batch(items)
+        if not self.send_batch(items):
+            return False
+        # Remove only the batch that was sent. Keep it intact on failure so
+        # callers can retry a later flush without losing ads.
+        del self._buffer[:len(items)]
+        return True
 
     def as_callback(self) -> Callable[[Event], None]:
         """Return a callback function suitable for :meth:`EventEmitter.on`.

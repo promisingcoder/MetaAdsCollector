@@ -69,6 +69,21 @@ markers = [
 
 Integration tests marked with `@pytest.mark.integration` are skipped by default. They contact Meta when enabled, require network access, and may fail if Meta changes or blocks its internal endpoints. To opt in, use `python -m pytest --run-integration` or set `RUN_INTEGRATION_TESTS=1`.
 
+### Checks on every push
+
+CI runs the regression suite on Python 3.9–3.14 on Linux and Python 3.12 on Windows. It builds and checks the wheel/source archive, tests the installed wheel outside the checkout, and repeats the regressions with the exact declared curl-cffi minimum.
+
+The blocking live job uses the built wheel against real Meta ads, including pagination, field fidelity, exports, media, and authenticated/rotating local forwarding proxies. The forwarding proxies tunnel to Meta; they do not supply fabricated responses. Network or Meta changes can fail this job and are visible in the uploaded JUnit results. Missing optional data is reported as unverified rather than assumed to work.
+
+Publishing reuses all CI checks before uploading the tested artifacts with PyPI Trusted Publishing. The final job downloads hash-verified public PyPI artifacts and repeats minimum-dependency and live checks. No PyPI token belongs in the repository.
+
+```bash
+python -m build
+python scripts/check_distribution.py
+python scripts/check_distribution.py --minimum
+python scripts/check_distribution.py --live
+```
+
 ## Code Style
 
 ### Linting with Ruff

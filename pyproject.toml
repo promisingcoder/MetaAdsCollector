@@ -4,7 +4,7 @@ build-backend = "setuptools.build_meta"
 
 [project]
 name = "meta-ads-collector"
-version = "1.4.3"
+version = "1.5.0"
 description = "Collect ads from the Meta (Facebook) Ad Library -- no API key required"
 readme = "README.md"
 license = "MIT"
@@ -42,7 +42,7 @@ classifiers = [
     "Typing :: Typed",
 ]
 dependencies = [
-    "curl_cffi>=0.7.0",
+    "curl_cffi>=0.13.0",
 ]
 
 [project.optional-dependencies]
@@ -53,6 +53,10 @@ dev = [
     "requests>=2.28.0",
     "ruff>=0.4",
     "mypy>=1.0",
+    "build>=1.2",
+    "packaging>=24.0",
+    "setuptools>=68.0",
+    "twine>=6.0",
 ]
 
 [project.scripts]
@@ -62,7 +66,7 @@ meta-ads-collector = "meta_ads_collector.cli:main"
 Homepage = "https://github.com/promisingcoder/MetaAdsCollector"
 Repository = "https://github.com/promisingcoder/MetaAdsCollector"
 Issues = "https://github.com/promisingcoder/MetaAdsCollector/issues"
-Documentation = "https://github.com/promisingcoder/MetaAdsCollector/tree/main/docs"
+Documentation = "https://promisingcoder.github.io/MetaAdsCollector/"
 Changelog = "https://github.com/promisingcoder/MetaAdsCollector/blob/main/CHANGELOG.md"
 
 [tool.setuptools.packages.find]

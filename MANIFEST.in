@@ -4,3 +4,8 @@ include CHANGELOG.md
 include pyproject.toml
 include meta_ads_collector/py.typed
 recursive-include docs *.md
+recursive-include tests *.py
+recursive-include scripts *.py
+prune _local_audit
+exclude metaads_audit_report.md
+exclude docs_decision_checklist.html

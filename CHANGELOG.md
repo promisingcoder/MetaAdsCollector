@@ -5,6 +5,24 @@ All notable changes to this project will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [1.5.0] - 2026-10-01
+
+### Fixed
+- Surface exhausted rate/session retries and Meta response errors; preserve incremental checkpoints after failures.
+- Follow empty intermediate pages, bound empty-page runs, and reject cyclic pagination cursors in sync and async collectors.
+- Preserve inactive status, zero bounds, UTC delivery timestamps, partial audiences, and valid data beside malformed optional entries.
+- Compare timezone-aware filters by instant, normalize numeric metric strings, and fill missing fields during enrichment.
+- Download media atomically, confine file paths, ignore partial cache files, and return absolute paths.
+- Honor page media downloads and enrich before downloading; report real duplicate/filter counters and validate CLI configuration.
+- Retain failed webhook batches for retry and redact proxy credentials; support standard URLs and reserved proxy credentials.
+- Require curl-cffi 0.13.0 or newer and ship the complete test suite in source distributions.
+
+### Added
+- Lossless `api_fields` in JSON/JSONL and CSV exports, preserving every supplied Meta field and nested value.
+- Regression, built-wheel, dependency-floor, cross-version, Windows, and live Meta checks on every push.
+- Real Meta proxy transport checks with authenticated local forwarding proxies and rotation.
+- CI-gated PyPI Trusted Publishing and tests against the actual published artifacts after release.
+
 ## [1.4.3] - 2026-10-01
 
 ### Fixed

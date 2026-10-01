@@ -10,7 +10,7 @@ from __future__ import annotations
 
 import logging
 from dataclasses import dataclass, field
-from datetime import datetime
+from datetime import datetime, timezone
 
 from .models import Ad
 
@@ -185,10 +185,14 @@ def passes_filter(ad: Ad, config: FilterConfig) -> bool:
 # ---------------------------------------------------------------------------
 
 def _strip_tz(dt: datetime) -> datetime:
-    """Return a naive datetime (drop timezone info for comparison)."""
-    if dt.tzinfo is not None:
-        return dt.replace(tzinfo=None)
-    return dt
+    """Normalize dates to aware UTC for comparisons.
+
+    Naive values are interpreted as UTC, matching the model's policy for
+    Meta timestamps and preventing machine-local timezone effects.
+    """
+    if dt.tzinfo is None:
+        return dt.replace(tzinfo=timezone.utc)
+    return dt.astimezone(timezone.utc)
 
 
 def _ad_has_video(ad: Ad) -> bool:
@@ -198,8 +202,13 @@ def _ad_has_video(ad: Ad) -> bool:
         for creative in ad.creatives
     ):
         return True
-    # Also check raw_data for top-level videos array
-    return bool(ad.raw_data and ad.raw_data.get("videos"))
+    # Also check raw_data for top-level video assets in unparsed/legacy ads.
+    videos = ad.raw_data.get("videos") if ad.raw_data else None
+    return isinstance(videos, list) and any(
+        isinstance(video, dict)
+        and any(video.get(key) for key in ("video_hd_url", "video_sd_url"))
+        for video in videos
+    )
 
 
 def _ad_has_image(ad: Ad) -> bool:
@@ -209,5 +218,10 @@ def _ad_has_image(ad: Ad) -> bool:
         for creative in ad.creatives
     ):
         return True
-    # Also check raw_data for top-level images array
-    return bool(ad.raw_data and ad.raw_data.get("images"))
+    # Also check raw_data for top-level image assets in unparsed/legacy ads.
+    images = ad.raw_data.get("images") if ad.raw_data else None
+    return isinstance(images, list) and any(
+        isinstance(image, dict)
+        and any(image.get(key) for key in ("original_image_url", "resized_image_url"))
+        for image in images
+    )

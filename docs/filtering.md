@@ -43,6 +43,9 @@ with MetaAdsCollector() as collector:
 
 ### Date range filtering
 
+Date comparisons use instants: timezone-aware values are converted to UTC, and
+naive datetimes are interpreted as UTC. Parsed Unix timestamps are UTC-aware.
+
 ```python
 from datetime import datetime
 from meta_ads_collector import MetaAdsCollector, FilterConfig

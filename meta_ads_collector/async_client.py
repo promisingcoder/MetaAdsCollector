@@ -24,11 +24,10 @@ from .constants import (
 from .exceptions import (
     AuthenticationError,
     MetaAdsError,
-    ProxyError,
     SessionExpiredError,
 )
 from .fingerprint import BrowserFingerprint, generate_fingerprint
-from .proxy_pool import ProxyPool
+from .proxy_pool import ProxyPool, parse_proxy
 
 logger = logging.getLogger(__name__)
 
@@ -155,19 +154,8 @@ class AsyncMetaAdsClient:
 
     @staticmethod
     def _format_proxy_url(proxy: str) -> str:
-        """Convert ``host:port`` or ``host:port:user:pass`` to a URL."""
-        parts = proxy.split(":")
-        if len(parts) == 4:
-            host, port, username, password = parts
-            return f"http://{username}:{password}@{host}:{port}"
-        elif len(parts) == 2:
-            host, port = parts
-            return f"http://{host}:{port}"
-        else:
-            raise ProxyError(
-                f"Invalid proxy format: {proxy!r}. "
-                "Expected host:port or host:port:user:pass"
-            )
+        """Normalize any proxy format accepted by :class:`ProxyPool`."""
+        return parse_proxy(proxy)
 
     # ------------------------------------------------------------------
     # Delegated pure-logic helpers (no HTTP)

@@ -32,11 +32,10 @@ from .constants import (
 from .exceptions import (
     AuthenticationError,
     MetaAdsError,
-    ProxyError,
     SessionExpiredError,
 )
 from .fingerprint import BrowserFingerprint, generate_fingerprint
-from .proxy_pool import ProxyPool
+from .proxy_pool import ProxyPool, parse_proxy
 
 logger = logging.getLogger(__name__)
 
@@ -222,21 +221,13 @@ class MetaAdsClient:
         if not proxy:
             return
 
-        parts = proxy.split(":")
-        if len(parts) == 4:
-            host, port, username, password = parts
-            proxy_url = f"http://{username}:{password}@{host}:{port}"
-        elif len(parts) == 2:
-            host, port = parts
-            proxy_url = f"http://{host}:{port}"
-        else:
-            raise ProxyError(f"Invalid proxy format: {proxy!r}. Expected host:port or host:port:user:pass")
+        proxy_url = parse_proxy(proxy)
 
         self.session.proxies = {
             "http": proxy_url,
             "https": proxy_url,
         }
-        logger.info(f"Proxy configured: {host}:{port}")
+        logger.info("Proxy configured")
 
     def _extract_tokens(self, html: str) -> dict[str, str]:
         """Extract required tokens from the Ad Library HTML page."""

@@ -52,10 +52,15 @@ from .events import (
     SESSION_REFRESHED,
     EventEmitter,
 )
-from .exceptions import InvalidParameterError
+from .exceptions import (
+    InvalidParameterError,
+    MetaAdsError,
+    RateLimitError,
+    SessionExpiredError,
+)
 from .filters import FilterConfig, passes_filter
 from .media import MediaDownloader, MediaDownloadResult
-from .models import Ad, PageInfo, PageSearchResult
+from .models import Ad, PageSearchResult
 from .proxy_pool import ProxyPool
 from .url_parser import extract_page_id_from_url
 
@@ -141,6 +146,8 @@ class MetaAdsCollector:
         self.stats: dict[str, Any] = {
             "requests_made": 0,
             "ads_collected": 0,
+            "duplicates_skipped": 0,
+            "filtered_out": 0,
             "pages_fetched": 0,
             "errors": 0,
             "start_time": None,
@@ -351,6 +358,8 @@ class MetaAdsCollector:
 
         self.stats["start_time"] = datetime.now(timezone.utc)
         cursor = None
+        seen_cursors: set[str] = set()
+        consecutive_empty_pages = 0
         collected = 0
         page_number = 0
         search_completed = False
@@ -385,23 +394,32 @@ class MetaAdsCollector:
                 retry_count = 0
                 max_retries = 3
                 response = None
+                response_error: MetaAdsError | None = None
 
                 while retry_count < max_retries:
                     try:
                         self.stats["requests_made"] += 1
-                        response, next_cursor = self.client.search_ads(
-                            query=query,
-                            country=country,
-                            ad_type=ad_type,
-                            active_status=status,
-                            search_type=search_type,
-                            page_ids=page_ids,
-                            cursor=cursor,
-                            first=page_size,
-                            sort_mode=sort_by,
-                            session_id=search_session_id,
-                            collation_token=search_collation_token,
-                        )
+                        try:
+                            response, next_cursor = self.client.search_ads(
+                                query=query,
+                                country=country,
+                                ad_type=ad_type,
+                                active_status=status,
+                                search_type=search_type,
+                                page_ids=page_ids,
+                                cursor=cursor,
+                                first=page_size,
+                                sort_mode=sort_by,
+                                session_id=search_session_id,
+                                collation_token=search_collation_token,
+                            )
+                        except MetaAdsError as client_error:
+                            self.stats["errors"] += 1
+                            self.event_emitter.emit(ERROR_OCCURRED, {
+                                "exception": client_error,
+                                "context": "Search client raised an error",
+                            })
+                            raise
 
                         # Check for rate limiting
                         if response.get("rate_limited"):
@@ -421,11 +439,15 @@ class MetaAdsCollector:
                             else:
                                 logger.error("Max retries exceeded due to rate limiting")
                                 self.stats["errors"] += 1
+                                rate_limit_error: MetaAdsError = RateLimitError(
+                                    "Max retries exceeded due to rate limiting",
+                                    retry_after=wait_time,
+                                )
                                 self.event_emitter.emit(ERROR_OCCURRED, {
-                                    "exception": None,
+                                    "exception": rate_limit_error,
                                     "context": "Max retries exceeded due to rate limiting",
                                 })
-                                return
+                                raise rate_limit_error
 
                         # Check for session expiry - client handles refresh,
                         # we just need to retry the request
@@ -441,16 +463,25 @@ class MetaAdsCollector:
                             else:
                                 logger.error("Max retries exceeded due to session expiry")
                                 self.stats["errors"] += 1
+                                session_expired_error = SessionExpiredError(
+                                    "Max retries exceeded due to session expiry"
+                                )
                                 self.event_emitter.emit(ERROR_OCCURRED, {
-                                    "exception": None,
+                                    "exception": session_expired_error,
                                     "context": "Max retries exceeded due to session expiry",
                                 })
-                                return
+                                raise session_expired_error
+
+                        if response.get("error"):
+                            response_error = MetaAdsError(str(response["error"]))
+                            break
 
                         self.stats["pages_fetched"] += 1
                         page_number += 1
                         break  # Success, exit retry loop
 
+                    except MetaAdsError:
+                        raise
                     except Exception as e:
                         logger.error(f"Search request failed: {e}")
                         self.stats["errors"] += 1
@@ -463,6 +494,14 @@ class MetaAdsCollector:
                             raise
                         time.sleep(3 * retry_count)
 
+                if response_error is not None:
+                    self.stats["errors"] += 1
+                    self.event_emitter.emit(ERROR_OCCURRED, {
+                        "exception": response_error,
+                        "context": "Search response contained an error",
+                    })
+                    raise response_error
+
                 if response is None:
                     logger.error("No response received after retries")
                     break
@@ -470,18 +509,31 @@ class MetaAdsCollector:
                 # Process results
                 ads_data = response.get("ads", [])
 
-                if not ads_data:
+                if not ads_data and not next_cursor:
                     logger.info("No more results returned")
                     search_completed = not had_parse_errors
                     break
 
-                # Emit page_fetched after processing the page
-                has_next = bool(next_cursor)
                 self.event_emitter.emit(PAGE_FETCHED, {
                     "page_number": page_number,
                     "ads_on_page": len(ads_data),
-                    "has_next_page": has_next,
+                    "has_next_page": bool(next_cursor),
                 })
+
+                if not ads_data:
+                    consecutive_empty_pages += 1
+                    if consecutive_empty_pages > 25:
+                        empty_pages_error = MetaAdsError(
+                            "Exceeded 25 consecutive empty pages with pagination cursors"
+                        )
+                        self.stats["errors"] += 1
+                        self.event_emitter.emit(ERROR_OCCURRED, {
+                            "exception": empty_pages_error,
+                            "context": "Too many consecutive empty pages",
+                        })
+                        raise empty_pages_error
+                else:
+                    consecutive_empty_pages = 0
 
                 limit_reached = False
                 for ad_data in ads_data:
@@ -494,10 +546,16 @@ class MetaAdsCollector:
 
                         # Skip already-seen ads
                         if dedup_tracker is not None and dedup_tracker.has_seen(ad.id):
+                            self.stats["duplicates_skipped"] = (
+                                self.stats.get("duplicates_skipped", 0) + 1
+                            )
                             continue
 
                         # Apply client-side filters
                         if filter_config is not None and not passes_filter(ad, filter_config):
+                            self.stats["filtered_out"] = (
+                                self.stats.get("filtered_out", 0) + 1
+                            )
                             continue
 
                     except Exception as e:
@@ -547,7 +605,19 @@ class MetaAdsCollector:
                     # The cursor proves that results remain beyond this limit.
                     break
 
+                if next_cursor in seen_cursors:
+                    repeated_cursor_error = MetaAdsError(
+                        f"Repeated pagination cursor detected: {next_cursor!r}"
+                    )
+                    self.stats["errors"] += 1
+                    self.event_emitter.emit(ERROR_OCCURRED, {
+                        "exception": repeated_cursor_error,
+                        "context": "Repeated pagination cursor",
+                    })
+                    raise repeated_cursor_error
+
                 cursor = next_cursor
+                seen_cursors.add(next_cursor)
                 logger.debug(f"Fetching next page (collected: {collected})")
 
                 # Rate limiting
@@ -806,83 +876,83 @@ class MetaAdsCollector:
             )
             return ad
 
-        # Merge detail data into a *new* Ad instance.
+        # Merge detail data into a *new* Ad instance, recursively filling
+        # empty fields in the current model. ``None``, empty strings, empty
+        # lists, and empty dictionaries are missing; False and zero are real
+        # values and must be preserved.
         try:
             enriched = Ad.from_graphql_response(detail_data)
-
-            # Only update fields that are enriched (non-None in the new
-            # data) and that were previously empty/None in the original.
-            # We work on the original ad's attributes and build a dict of
-            # updates so we never partially mutate the original.
             import copy
+            from dataclasses import fields, is_dataclass
+
             result = copy.deepcopy(ad)
 
-            # Merge page info if enriched has more data
-            if (
-                enriched.page
-                and result.page
-                and not result.page.profile_picture_url
-                and enriched.page.profile_picture_url
-            ):
-                result.page = PageInfo(
-                    id=result.page.id,
-                    name=result.page.name,
-                    profile_picture_url=enriched.page.profile_picture_url,
-                    page_url=result.page.page_url or enriched.page.page_url,
-                    likes=result.page.likes or enriched.page.likes,
-                    verified=result.page.verified or enriched.page.verified,
+
+            def merge_missing(current: Any, incoming: Any) -> Any:
+                if incoming is None:
+                    return current
+
+                if is_dataclass(incoming):
+                    if current is None:
+                        return copy.deepcopy(incoming)
+                    if not is_dataclass(current) or type(current) is not type(incoming):
+                        return current
+                    for model_field in fields(incoming):
+                        field_name = model_field.name
+                        setattr(
+                            current,
+                            field_name,
+                            merge_missing(
+                                getattr(current, field_name),
+                                getattr(incoming, field_name),
+                            ),
+                        )
+                    return current
+
+                if isinstance(incoming, list):
+                    if not current:
+                        return copy.deepcopy(incoming)
+                    if (
+                        isinstance(current, list)
+                        and incoming
+                        and all(is_dataclass(item) for item in incoming)
+                        and all(is_dataclass(item) for item in current)
+                    ):
+                        merged_items = [
+                            merge_missing(current[index], item)
+                            if index < len(current) else copy.deepcopy(item)
+                            for index, item in enumerate(incoming)
+                        ]
+                        if len(current) > len(merged_items):
+                            merged_items.extend(current[len(merged_items):])
+                        return merged_items
+                    return current
+
+                if isinstance(incoming, dict):
+                    if not current:
+                        return copy.deepcopy(incoming)
+                    if not isinstance(current, dict):
+                        return current
+                    merged_dict = copy.deepcopy(current)
+                    for key, value in incoming.items():
+                        merged_dict[key] = merge_missing(merged_dict.get(key), value)
+                    return merged_dict
+
+                if current is None or current == "":
+                    return copy.deepcopy(incoming)
+                return current
+
+            for model_field in fields(result):
+                if model_field.name == "id":
+                    continue
+                setattr(
+                    result,
+                    model_field.name,
+                    merge_missing(
+                        getattr(result, model_field.name),
+                        getattr(enriched, model_field.name),
+                    ),
                 )
-
-            # Merge scalar fields (only fill in blanks)
-            if not result.ad_library_id and enriched.ad_library_id:
-                result.ad_library_id = enriched.ad_library_id
-            if not result.snapshot_url and enriched.snapshot_url:
-                result.snapshot_url = enriched.snapshot_url
-            if not result.ad_snapshot_url and enriched.ad_snapshot_url:
-                result.ad_snapshot_url = enriched.ad_snapshot_url
-            if not result.funding_entity and enriched.funding_entity:
-                result.funding_entity = enriched.funding_entity
-            if not result.disclaimer and enriched.disclaimer:
-                result.disclaimer = enriched.disclaimer
-            if not result.ad_type and enriched.ad_type:
-                result.ad_type = enriched.ad_type
-
-            # Merge list fields (only fill in empty lists)
-            if not result.publisher_platforms and enriched.publisher_platforms:
-                result.publisher_platforms = enriched.publisher_platforms
-            if not result.languages and enriched.languages:
-                result.languages = enriched.languages
-            if not result.categories and enriched.categories:
-                result.categories = enriched.categories
-            if not result.bylines and enriched.bylines:
-                result.bylines = enriched.bylines
-            if not result.beneficiary_payers and enriched.beneficiary_payers:
-                result.beneficiary_payers = enriched.beneficiary_payers
-            if not result.age_gender_distribution and enriched.age_gender_distribution:
-                result.age_gender_distribution = enriched.age_gender_distribution
-            if not result.region_distribution and enriched.region_distribution:
-                result.region_distribution = enriched.region_distribution
-
-            # Merge creatives (only if original has none/empty)
-            if not result.creatives and enriched.creatives:
-                result.creatives = enriched.creatives
-
-            # Enrich existing creatives with media URLs if they were missing
-            if result.creatives and enriched.creatives:
-                for i, creative in enumerate(result.creatives):
-                    if i >= len(enriched.creatives):
-                        break
-                    e_creative = enriched.creatives[i]
-                    if not creative.image_url and e_creative.image_url:
-                        creative.image_url = e_creative.image_url
-                    if not creative.video_url and e_creative.video_url:
-                        creative.video_url = e_creative.video_url
-                    if not creative.video_hd_url and e_creative.video_hd_url:
-                        creative.video_hd_url = e_creative.video_hd_url
-                    if not creative.video_sd_url and e_creative.video_sd_url:
-                        creative.video_sd_url = e_creative.video_sd_url
-                    if not creative.thumbnail_url and e_creative.thumbnail_url:
-                        creative.thumbnail_url = e_creative.thumbnail_url
 
             logger.debug("Enriched ad %s successfully", ad.id)
             return result
@@ -1061,6 +1131,7 @@ class MetaAdsCollector:
             "disclaimer",
             "ad_type",
             "collected_at",
+            "api_fields",
         ]
 
         count = 0
@@ -1110,6 +1181,7 @@ class MetaAdsCollector:
                     "disclaimer": ad.disclaimer or "",
                     "ad_type": ad.ad_type or "",
                     "collected_at": ad.collected_at.isoformat(),
+                    "api_fields": json.dumps(ad.api_fields, ensure_ascii=False),
                 }
 
                 writer.writerow(row)
