@@ -165,3 +165,27 @@ def test_large_response_requires_field_selection(service, stored, real_records):
     with pytest.raises(MCPError, match="fewer fields"):
         service.results(stored, view="raw")
     assert service.results(stored, fields=["id"])["ads"]
+
+
+def test_default_summaries_omit_long_media_urls_without_losing_saved_fields(service, stored, real_records):
+    summary = service.results(stored)["ads"][0]
+    assert all("video_hd_url" not in creative and "image_url" not in creative for creative in summary["creatives"])
+    assert "profile_picture_url" not in summary["page"]
+    detailed = service.results(stored, view="detailed")["ads"][0]
+    assert detailed["creatives"] == real_records[0]["creatives"]
+    selected = service.results(stored, fields=["creatives"])["ads"][0]
+    assert selected["creatives"] == real_records[0]["creatives"]
+
+
+def test_summary_truncation_is_explicit_and_does_not_mutate_source(service, stored, real_records):
+    import copy
+
+    record = copy.deepcopy(real_records[0])
+    record["creatives"] = [{"body": "Observed text extended for controlled size testing: " + "x" * 2000}] * 4
+    service.store.replace_record(stored, record)
+    summary = service.results(stored)["ads"][0]
+    assert summary["creative_count"] == 4 and summary["creatives_truncated"]
+    assert len(summary["creatives"]) == 3
+    assert summary["creatives"][0]["truncated_fields"] == ["body"]
+    assert len(summary["creatives"][0]["body"]) == 1500
+    assert service.store.record(stored, record["id"])["creatives"] == record["creatives"]

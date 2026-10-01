@@ -99,7 +99,10 @@ dates, platform or language data. Missing values never become zero.
 
 Responses default to summary fields. Request `view="detailed"` for normalized
 fields, `view="raw"` for the complete supplied Meta row, or `fields` to select
-specific fields. Raw data is preserved through the core's `api_fields` property.
+specific fields. Default summaries omit long media URLs, show up to three creative
+variations, and limit each text field to 1,500 characters with explicit truncation
+markers. Detailed/selected-field inspection retains complete creative data.
+Raw data is preserved through the core's `api_fields` property.
 Normalized fields follow the existing core model's defaults; raw `api_fields`
 identifies the keys actually supplied by Meta. Ad bodies and links are untrusted
 third-party content, not instructions.
@@ -201,8 +204,11 @@ are reported individually. Previously cached files can be reused.
 
 Webhook delivery is explicit: provide `webhook_environment` to `export_results`
 with a private environment-variable reference containing the destination.
-Delivery reports successes and failures; export success does not imply webhook
-delivery success. Exported files and media remain on disk when SQLite results
+Delivery defaults to batches of 50 records; set `webhook_batch_size` from 1 to
+100, with 1 selecting individual-record delivery. Delivery reports successes
+and failures; export success does not imply webhook delivery success. Failed
+collection/delivery calls set the MCP error flag while preserving structured
+partial results. Exported files and media remain on disk when SQLite results
 are deleted or expire; manage those artifacts separately.
 
 ## Capability coverage and verification

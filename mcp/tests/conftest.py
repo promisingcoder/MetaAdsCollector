@@ -2,7 +2,10 @@
 
 from __future__ import annotations
 
+import json
 import os
+import threading
+from http.server import BaseHTTPRequestHandler, ThreadingHTTPServer
 
 import pytest
 from meta_ads_collector_mcp.schemas import Search
@@ -68,3 +71,32 @@ def stored(service, real_records):
         service.store.save_ad(job_id, service.owner, record)
     service.store.release(job_id, service.owner, "COMPLETED")
     return job_id
+
+
+@pytest.fixture
+def receiver(monkeypatch):
+    """A real local receiver; tests send Meta records, not messages to external people/services."""
+    received = []
+    status = [200]
+
+    class Handler(BaseHTTPRequestHandler):
+        def do_POST(self):
+            payload = json.loads(self.rfile.read(int(self.headers["Content-Length"])))
+            received.append(payload)
+            self.send_response(status[0])
+            self.end_headers()
+
+        def log_message(self, *args):
+            pass
+
+    server = ThreadingHTTPServer(("127.0.0.1", 0), Handler)
+    thread = threading.Thread(target=server.serve_forever, daemon=True)
+    thread.start()
+    monkeypatch.setenv("MCP_TEST_DELIVERY", f"http://127.0.0.1:{server.server_port}/ads")
+    monkeypatch.setenv("NO_PROXY", "localhost,127.0.0.1,::1")
+    try:
+        yield received, status
+    finally:
+        server.shutdown()
+        server.server_close()
+        thread.join(timeout=5)

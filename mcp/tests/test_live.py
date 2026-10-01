@@ -107,6 +107,15 @@ def test_actual_details_and_media(live_service, live_collection):
     assert not list(live_service.output_dir.rglob("*.part"))
 
 
+def test_actual_collected_evidence_webhook_delivery(live_service, live_collection, receiver):
+    received, _ = receiver
+    job_id = live_collection["result_set_id"]
+    result = live_service.export(job_id, filename="live-delivery.json", webhook_environment="MCP_TEST_DELIVERY")
+    rows = [row for batch in received for row in batch["ads"]]
+    assert rows == live_service.store.records(job_id)
+    assert rows and result["webhook"] == {"delivered": len(rows), "failed": 0}
+
+
 def test_actual_resume_after_server_close(live_service, live_collection):
     job_id = live_collection["result_set_id"]
     before = {row["id"] for row in live_service.store.records(job_id)}

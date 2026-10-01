@@ -313,6 +313,30 @@ class Service:
             result = {key: value for key, value in record.items() if key not in ("api_fields", "raw_data")}
         else:
             result = {key: record.get(key) for key in SUMMARY_FIELDS}
+            page = record.get("page")
+            result["page"] = {key: page.get(key) for key in ("id", "name", "page_url")} if page else None
+            creatives = record.get("creatives", [])
+            summaries = []
+            for creative in creatives[:3]:
+                item = {}
+                truncated = []
+                for key in ("body", "title", "caption", "description", "cta_text"):
+                    value = creative.get(key)
+                    if value is not None:
+                        if isinstance(value, str) and len(value) > 1500:
+                            truncated.append(key)
+                            value = value[:1500]
+                        item[key] = value
+                item["has_image"] = bool(creative.get("image_url") or creative.get("thumbnail_url"))
+                item["has_video"] = bool(
+                    any(creative.get(key) for key in ("video_url", "video_hd_url", "video_sd_url"))
+                )
+                if truncated:
+                    item["truncated_fields"] = truncated
+                summaries.append(item)
+            result["creatives"] = summaries
+            result["creative_count"] = len(creatives)
+            result["creatives_truncated"] = len(creatives) > 3
         result["id"] = record["id"]
         result["collected_at"] = record.get("collected_at")
         result["source_url"] = "https://www.facebook.com/ads/library/?id=" + record["id"]
@@ -382,14 +406,24 @@ class Service:
         return {"result_set_id": job_id, "items": results, "untrusted_ad_content": True}
 
     def export(
-        self, job_id: str, format: str = "json", filename: str | None = None, webhook_environment: str | None = None
+        self,
+        job_id: str,
+        format: str = "json",
+        filename: str | None = None,
+        webhook_environment: str | None = None,
+        webhook_batch_size: int = 50,
     ) -> dict:
         if format not in ("json", "jsonl", "csv"):
             raise MCPError("invalid_format", "Choose json, jsonl or csv")
+        if not 1 <= webhook_batch_size <= 100:
+            raise MCPError("invalid_input", "Webhook batch size must be between 1 and 100")
         job = self.public_job(job_id)
         path = safe_path(self.output_dir, filename or f"{job_id}.{format}")
         if path.exists():
             raise MCPError("already_exists", "Choose a new export filename")
+        metadata = path.with_name(path.name + ".metadata.json")
+        if format != "json" and metadata.exists():
+            raise MCPError("already_exists", "Choose a new export filename; its metadata sidecar already exists")
         path.parent.mkdir(parents=True, exist_ok=True)
         temp = path.with_name(path.name + "." + uuid.uuid4().hex + ".part")
         count = 0
@@ -418,26 +452,36 @@ class Service:
                         count += 1
                 if format == "json":
                     stream.write("]}")
-            os.replace(temp, path)
+            try:
+                os.link(temp, path)
+            except FileExistsError as exc:
+                raise MCPError("already_exists", "Choose a new export filename") from exc
         finally:
             temp.unlink(missing_ok=True)
         result = {"path": str(path), "count": count, "metadata": job}
         if format != "json":
-            metadata = path.with_name(path.name + ".metadata.json")
-            metadata.write_text(dumps(job), encoding="utf-8")
+            try:
+                with metadata.open("x", encoding="utf-8") as stream:
+                    stream.write(dumps(job))
+            except FileExistsError as exc:
+                path.unlink(missing_ok=True)
+                raise MCPError("already_exists", "Metadata filename was claimed by another writer") from exc
             result["metadata_path"] = str(metadata)
         if webhook_environment:
             destination = private_value(webhook_environment, None, self.private_dir)
             sender = WebhookSender(destination)
             successes = failures = 0
-            with self.network:
-                for offset in range(0, count, 256):
-                    for record in self.store.records(job_id, min(256, count - offset), offset):
-                        if sender.send(record):
-                            successes += 1
+            try:
+                with self.network:
+                    for offset in range(0, count, webhook_batch_size):
+                        batch = self.store.records(job_id, min(webhook_batch_size, count - offset), offset)
+                        delivered = sender.send(batch[0]) if webhook_batch_size == 1 else sender.send_batch(batch)
+                        if delivered:
+                            successes += len(batch)
                         else:
-                            failures += 1
-            sender._session.close()
+                            failures += len(batch)
+            finally:
+                sender._session.close()
             result["webhook"] = {"delivered": successes, "failed": failures}
         return result
 

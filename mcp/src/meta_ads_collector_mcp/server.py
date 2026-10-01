@@ -9,7 +9,7 @@ from typing import Any, Literal
 import anyio
 from mcp.server import MCPServer
 from mcp.server.mcpserver.exceptions import ToolError
-from mcp.types import ToolAnnotations
+from mcp.types import CallToolResult, TextContent, ToolAnnotations
 from pydantic import ValidationError
 
 from .engine import error_info
@@ -51,6 +51,13 @@ def create_server(service: Service) -> MCPServer:
     read = ToolAnnotations(readOnlyHint=True, destructiveHint=False, openWorldHint=False)
     collect = ToolAnnotations(readOnlyHint=False, destructiveHint=False, openWorldHint=True)
 
+    def collection_response(data):
+        if data.get("job", {}).get("state") == "FAILED" or data.get("webhook", {}).get("failed", 0):
+            return CallToolResult(
+                content=[TextContent(type="text", text=json.dumps(data))], structured_content=data, is_error=True
+            )
+        return data
+
     @server.tool(annotations=read)
     async def discover() -> dict[str, Any]:
         """Discover supported capabilities, schemas, fields, budgets, coverage and monitoring requirements."""
@@ -72,7 +79,7 @@ def create_server(service: Service) -> MCPServer:
 
         Returns reusable results and explicit collection state.
         """
-        return await call(service.search, search, batch_size, background)
+        return collection_response(await call(service.search, search, batch_size, background))
 
     @server.tool(annotations=collect)
     async def continue_search(result_set_id: str, batch_size: int = 20) -> dict[str, Any]:
@@ -80,7 +87,7 @@ def create_server(service: Service) -> MCPServer:
 
         A restart replays committed-page state with deduplication.
         """
-        return await call(service.continue_search, result_set_id, batch_size)
+        return collection_response(await call(service.continue_search, result_set_id, batch_size))
 
     @server.tool(annotations=collect)
     async def inspect_ads(
@@ -132,12 +139,15 @@ def create_server(service: Service) -> MCPServer:
         format: Literal["json", "jsonl", "csv"] = "json",
         filename: str | None = None,
         webhook_environment: str | None = None,
+        webhook_batch_size: int = 50,
     ) -> dict[str, Any]:
         """Export existing evidence without recollection.
 
         Optional webhook delivery requires a private destination reference.
         """
-        return await call(service.export, result_set_id, format, filename, webhook_environment)
+        return collection_response(
+            await call(service.export, result_set_id, format, filename, webhook_environment, webhook_batch_size)
+        )
 
     @server.tool(annotations=ToolAnnotations(readOnlyHint=False, destructiveHint=True, openWorldHint=True))
     async def jobs(

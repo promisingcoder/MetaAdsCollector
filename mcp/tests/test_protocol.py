@@ -74,3 +74,34 @@ async def test_stdio_initialization_framing_and_shutdown(tmp_path):
         error = await client.call_tool("search", {"search": {"query": "nike", "page_size": 31}})
         assert error.is_error
     assert (tmp_path / "state.sqlite3").exists()
+
+
+@pytest.mark.asyncio
+async def test_failed_search_sets_protocol_error_flag_with_structured_results(service, monkeypatch):
+    from meta_ads_collector.client import MetaAdsClient
+    from meta_ads_collector.exceptions import RateLimitError
+
+    def observed_failure(self, **kwargs):
+        raise RateLimitError("Controlled reproduction of a Meta rate-limit response", retry_after=30)
+
+    monkeypatch.setattr(MetaAdsClient, "search_ads", observed_failure)
+    async with Client(create_server(service)) as client:
+        result = await client.call_tool("search", {"search": {"query": "nike"}, "batch_size": 1})
+        assert result.is_error
+        assert result.structured_content["job"]["state"] == "FAILED"
+        assert result.structured_content["job"]["error"]["code"] == "rate_limited"
+        assert result.structured_content["ads"] == []
+
+
+@pytest.mark.asyncio
+async def test_failed_webhook_sets_error_flag_and_retains_export(service, stored, receiver):
+    _, status = receiver
+    status[0] = 503
+    async with Client(create_server(service)) as client:
+        result = await client.call_tool(
+            "export_results",
+            {"result_set_id": stored, "filename": "protocol-delivery.json", "webhook_environment": "MCP_TEST_DELIVERY"},
+        )
+        assert result.is_error
+        assert result.structured_content["webhook"]["failed"] > 0
+        assert result.structured_content["path"]
