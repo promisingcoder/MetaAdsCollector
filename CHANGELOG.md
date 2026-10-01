@@ -5,6 +5,15 @@ All notable changes to this project will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [1.5.1] - 2026-10-01
+
+### Fixed
+- Make live SOCKS5 gateway checks independent of a second DNS lookup; curl's resolved Meta address can differ from Python's resolver cache.
+- Use the same private proxy session for CI preflight and full validation, with a fresh session for post-publication checks.
+
+### Added
+- Sync/async real Meta regressions for an unavailable independent DNS view, and guards for CI proxy session consistency.
+
 ## [1.5.0] - 2026-10-01
 
 ### Fixed

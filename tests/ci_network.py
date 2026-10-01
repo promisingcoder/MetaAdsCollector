@@ -21,7 +21,16 @@ def configure_ci_network(patch, proxy):
     if parsed.hostname == "proxy.apify.com" and parsed.username:
         username = unquote(parsed.username)
         if not any(part.startswith("session-") for part in username.split(",")):
-            username += ",session-metaads" + uuid.uuid4().hex
+            run_id = os.environ.get("GITHUB_RUN_ID")
+            attempt = os.environ.get("GITHUB_RUN_ATTEMPT", "1")
+            # Validate the same exit in preflight and the full live job. Start
+            # a separate fresh exit for the post-publication verification.
+            stage = "published" if os.environ.get("GITHUB_JOB") == "verify-published" else "validate"
+            session = (
+                f"metaads{run_id}a{attempt}{stage}" if run_id and run_id.isdigit()
+                else "metaads" + uuid.uuid4().hex
+            )
+            username += ",session-" + session
             authority = quote(username, safe="") + ":" + (parsed.password or "")
             authority += "@" + parsed.hostname + (f":{parsed.port}" if parsed.port else "")
             normalized = urlunsplit(parsed._replace(netloc=authority))

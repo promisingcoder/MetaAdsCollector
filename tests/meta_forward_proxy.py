@@ -8,6 +8,7 @@ from __future__ import annotations
 
 import base64
 import contextlib
+import ipaddress
 import os
 import select
 import socket
@@ -154,9 +155,6 @@ class MetaSocksProxy(MetaForwardProxy):
 
     def __init__(self, username: str, password: str):
         self.connections = []
-        self.meta_addresses = {
-            row[4][0] for row in socket.getaddrinfo("www.facebook.com", 443, type=socket.SOCK_STREAM)
-        }
         self.username = username
         self.password = password
         configured = os.environ.get("METAADS_CI_PROXY")
@@ -202,7 +200,16 @@ class MetaSocksProxy(MetaForwardProxy):
                     port = int.from_bytes(self.rfile.read(2), "big")
                     if port != 443:
                         return
-                    server_name = "www.facebook.com" if host in owner.meta_addresses else None
+                    # These fixtures collect only from www.facebook.com. Curl
+                    # resolves SOCKS5 destinations independently of Python,
+                    # and its cached address can differ from a second DNS lookup.
+                    # Keep its actual IP in CONNECT and retain the known Meta
+                    # authority in Host for the residential gateway.
+                    try:
+                        ipaddress.ip_address(host)
+                        server_name = "www.facebook.com"
+                    except ValueError:
+                        server_name = None
                     with _connect_remote(host, port, owner.upstream, server_name) as remote:
                         owner.connections.append(host)
                         self.wfile.write(b"\x05\x00\x00\x01\x00\x00\x00\x00\x00\x00")

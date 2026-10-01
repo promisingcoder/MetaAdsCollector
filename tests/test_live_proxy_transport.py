@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+import ipaddress
 import secrets
 from urllib.parse import quote
 
@@ -25,6 +26,54 @@ def test_sync_proxy_constructor_preserves_normalized_proxy_without_logging_failu
     proxy = "127.0.0.1:8080" if form == "legacy" else "http://127.0.0.1:8080"
     with MetaAdsClient(proxy=proxy) as client:
         assert client.session.proxies["https"] == "http://127.0.0.1:8080"
+
+
+def test_socks_gateway_does_not_require_an_independent_meta_dns_snapshot(monkeypatch):
+    import socket
+
+    resolver = socket.getaddrinfo
+
+    def unrelated_python_dns_view(host, *args, **kwargs):
+        assert host != "www.facebook.com", "Curl's resolver supplies the actual SOCKS destination"
+        return resolver(host, *args, **kwargs)
+
+    monkeypatch.setattr(socket, "getaddrinfo", unrelated_python_dns_view)
+    with MetaSocksProxy("audit", "ephemeral"):
+        pass
+
+
+@pytest.mark.integration
+@pytest.mark.parametrize("async_mode", [False, True], ids=["sync", "async"])
+def test_live_socks5_meta_collection_survives_a_different_python_dns_view(monkeypatch, async_mode):
+    import asyncio
+    import socket
+
+    from meta_ads_collector.async_collector import AsyncMetaAdsCollector
+
+    resolver = socket.getaddrinfo
+
+    def independent_dns_view(host, *args, **kwargs):
+        # Simulate a stale/unavailable second resolver without inventing a
+        # destination: curl still resolves the actual Meta hostname itself.
+        return [] if host == "www.facebook.com" else resolver(host, *args, **kwargs)
+
+    monkeypatch.setattr(socket, "getaddrinfo", independent_dns_view)
+    with MetaSocksProxy("audit@meta", "local/" + secrets.token_hex(12)) as proxy:
+        address = _proxy_string(proxy, "url").replace("http://", "socks5://", 1)
+        if async_mode:
+            async def collect():
+                async with AsyncMetaAdsCollector(proxy=address, timeout=30, max_retries=2,
+                                                 rate_limit_delay=0.5, jitter=0) as collector:
+                    return await collector.collect(query="nike", country="US", max_results=3, page_size=2)
+            ads = asyncio.run(collect())
+        else:
+            with MetaAdsCollector(proxy=address, timeout=30, max_retries=2,
+                                  rate_limit_delay=0.5, jitter=0) as collector:
+                ads = list(collector.search(query="nike", country="US", max_results=3, page_size=2))
+        assert len(ads) == 3
+        assert all(ad.id and ad.page and ad.page.id for ad in ads)
+        assert proxy.connections
+        assert all(ipaddress.ip_address(host) for host in proxy.connections)
 
 
 @pytest.mark.integration
@@ -102,7 +151,7 @@ def test_live_authenticated_socks_proxy_collects_actual_meta_ads(scheme, async_m
 
         # Verify both SOCKS DNS modes using addresses from the actual Meta DNS.
         if scheme == "socks5":
-            assert all(host in proxy.meta_addresses for host in proxy.connections)
+            assert all(ipaddress.ip_address(host) for host in proxy.connections)
         else:
             assert "www.facebook.com" in proxy.connections
 

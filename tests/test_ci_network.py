@@ -39,6 +39,25 @@ def test_apify_ci_uses_one_session_for_bootstrap_and_queries(monkeypatch):
     assert os.environ["METAADS_CI_PROXY"] == pinned
 
 
+def test_preflight_and_live_ci_share_an_exit_but_published_check_uses_a_fresh_one(monkeypatch):
+    proxy = "http://groups-RESIDENTIAL:ephemeral@proxy.apify.com:8000"
+    monkeypatch.setenv("GITHUB_RUN_ID", "123456789")
+    monkeypatch.setenv("GITHUB_RUN_ATTEMPT", "1")
+    monkeypatch.setenv("GITHUB_JOB", "live-connectivity")
+    configure_ci_network(monkeypatch, proxy)
+    preflight = os.environ["METAADS_CI_PROXY"]
+    monkeypatch.setenv("GITHUB_JOB", "live-meta")
+    configure_ci_network(monkeypatch, proxy)
+    assert os.environ["METAADS_CI_PROXY"] == preflight
+    monkeypatch.setenv("GITHUB_JOB", "verify-published")
+    configure_ci_network(monkeypatch, proxy)
+    assert os.environ["METAADS_CI_PROXY"] != preflight
+    monkeypatch.setenv("GITHUB_RUN_ATTEMPT", "2")
+    monkeypatch.setenv("GITHUB_JOB", "live-meta")
+    configure_ci_network(monkeypatch, proxy)
+    assert os.environ["METAADS_CI_PROXY"] != preflight
+
+
 def test_private_proxy_credentials_are_removed_from_uploaded_evidence(tmp_path):
     from scripts.check_distribution import private_proxy_values, redact_evidence
 
