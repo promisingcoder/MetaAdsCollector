@@ -49,3 +49,13 @@ def test_private_proxy_credentials_are_removed_from_uploaded_evidence(tmp_path):
     content = evidence.read_text(encoding="utf-8")
     assert "password" not in content
     assert "[REDACTED]" in content
+
+
+def test_distribution_checks_do_not_filter_out_integration_regressions():
+    import inspect
+
+    from scripts.check_distribution import main
+
+    # Captured-data fault injection is labeled separately in the report, but
+    # must still be exercised alongside every other permanent regression.
+    assert '"not controlled"' not in inspect.getsource(main)

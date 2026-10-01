@@ -154,7 +154,7 @@ def main() -> None:
         command = [str(python), "-I", "-m", "pytest", target, "-v",
                    f"--junitxml={evidence / (label + '.xml')}"]
         if args.live:
-            command += ["--run-integration", "-m", "integration", "-k", "not controlled"]
+            command += ["--run-integration", "-m", "integration"]
         else:
             command += ["-m", "not integration"]
         try:
