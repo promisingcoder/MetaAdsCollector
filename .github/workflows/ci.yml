@@ -67,7 +67,7 @@ jobs:
           path: ci-results/
   live-connectivity:
     needs: [quality, test, distribution]
-    runs-on: ubuntu-latest
+    runs-on: macos-latest
     timeout-minutes: 5
     steps:
       - uses: actions/checkout@v4
@@ -88,7 +88,7 @@ jobs:
           path: ci-results/
   live-meta:
     needs: [live-connectivity]
-    runs-on: ubuntu-latest
+    runs-on: macos-latest
     timeout-minutes: 30
     steps:
       - uses: actions/checkout@v4
