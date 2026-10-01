@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 import os
+import re
 import subprocess
 import tarfile
 from importlib.metadata import requires
@@ -10,6 +11,20 @@ from pathlib import Path
 
 import pytest
 from packaging.requirements import Requirement
+
+
+def test_documented_core_dependency_matches_the_installable_package():
+    source = Path(__file__).resolve().parents[1] / "docs" / "contributing.md"
+    if source.is_file():
+        documentation = source.read_text(encoding="utf-8")
+    else:
+        with tarfile.open(os.environ["METAADS_AUDIT_SDIST"]) as archive:
+            member = next(item for item in archive.getmembers() if item.name.endswith("/docs/contributing.md"))
+            documentation = archive.extractfile(member).read().decode("utf-8")
+    dependencies = [Requirement(value) for value in requires("meta-ads-collector") or []]
+    curl_requirement = next(item for item in dependencies if item.name.replace("_", "-") == "curl-cffi")
+    floor = next(spec.version for spec in curl_requirement.specifier if spec.operator == ">=")
+    assert re.findall(r"curl_cffi>=([0-9.]+)", documentation) == [floor]
 
 
 def test_published_package_imports_with_its_declared_minimum_dependency():

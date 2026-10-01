@@ -31,8 +31,8 @@ Async support is included in the package and does not require a separate optiona
 
 | Group | What it includes | When to install |
 |---|---|---|
-| (none) | `curl_cffi>=0.7.0` | Always (core dependency, provides Chrome TLS fingerprinting) |
-| `dev` | `pytest`, `pytest-cov`, `pytest-asyncio`, `requests`, `ruff`, `mypy` | For tests and development tools |
+| (none) | `curl_cffi>=0.13.0` | Always (core dependency, provides Chrome TLS fingerprinting) |
+| `dev` | `pytest`, `pytest-cov`, `pytest-asyncio`, `requests`, `PySocks`, `ruff`, `mypy`, `build`, `packaging`, `setuptools`, `twine` | For tests and development tools |
 
 ## Running Tests
 
@@ -75,7 +75,7 @@ CI runs the regression suite on Python 3.9–3.14 on Linux and Python 3.12 on Wi
 
 The blocking live job uses the built wheel against real Meta ads, including pagination, field fidelity, exports, media, and authenticated/rotating local forwarding proxies. The forwarding proxies tunnel to Meta; they do not supply fabricated responses. Network or Meta changes can fail this job and are visible in the uploaded JUnit results. Missing optional data is reported as unverified rather than assumed to work.
 
-If Meta rejects the hosted runner network, configure a working upstream proxy as the private GitHub Actions secret `METAADS_CI_PROXY`. Tests use it for actual Meta/CDN requests, including the upstream leg of the local proxy transport checks. Credentials belong only in the secret, never in a workflow, fixture, or committed file. The bounded connectivity check fails before the full workload when Meta refuses access.
+Live GitHub CI requires a working upstream proxy configured as the private GitHub Actions secret `METAADS_CI_PROXY`. Tests use it for actual Meta/CDN requests, including the upstream leg of the local proxy transport checks. Apify proxies use one persistent session per test run. Credentials belong only in the secret, never in a workflow, fixture, or committed file. The bounded connectivity check fails before the full workload when Meta refuses access.
 
 Publishing reuses all CI checks before uploading the tested artifacts with PyPI Trusted Publishing. The final job downloads hash-verified public PyPI artifacts and repeats minimum-dependency and live checks. No PyPI token belongs in the repository.
 
