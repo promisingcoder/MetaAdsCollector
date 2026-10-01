@@ -46,6 +46,7 @@ dependencies = [
 ]
 
 [project.optional-dependencies]
+mcp = ["mcp>=2.2,<3"]
 dev = [
     "pytest>=7.0",
     "pytest-cov>=4.0",
@@ -62,6 +63,7 @@ dev = [
 
 [project.scripts]
 meta-ads-collector = "meta_ads_collector.cli:main"
+meta-ads-mcp = "meta_ads_collector_mcp.cli:main"
 
 [project.urls]
 Homepage = "https://github.com/promisingcoder/MetaAdsCollector"
@@ -70,8 +72,9 @@ Issues = "https://github.com/promisingcoder/MetaAdsCollector/issues"
 Documentation = "https://promisingcoder.github.io/MetaAdsCollector/"
 Changelog = "https://github.com/promisingcoder/MetaAdsCollector/blob/main/CHANGELOG.md"
 
-[tool.setuptools.packages.find]
-include = ["meta_ads_collector*"]
+[tool.setuptools]
+packages = ["meta_ads_collector", "meta_ads_collector_mcp"]
+package-dir = {meta_ads_collector_mcp = "mcp/src/meta_ads_collector_mcp"}
 
 [tool.pytest.ini_options]
 testpaths = ["tests"]
@@ -79,6 +82,7 @@ addopts = "-v --tb=short"
 asyncio_mode = "auto"
 markers = [
     "integration: tests that hit real Meta API servers (deselected by default)",
+    "mcp_live: MCP checks against real Meta, enabled with --run-mcp-live",
 ]
 
 [tool.ruff]

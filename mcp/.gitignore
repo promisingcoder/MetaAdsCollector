@@ -1,0 +1,7 @@
+runtime/
+.private/
+*.secret
+*.sqlite*
+*.db*
+artifacts/
+test-results/
