@@ -4,6 +4,7 @@ from __future__ import annotations
 
 import os
 import re
+import shutil
 import subprocess
 import tarfile
 from importlib.metadata import requires
@@ -56,12 +57,7 @@ def test_published_sdist_includes_support_for_the_tests_it_ships(tmp_path):
     """Bundled tests must include their imported helpers and required fixtures."""
     artifact = os.environ.get("METAADS_AUDIT_SDIST")
     if not artifact:
-        built = subprocess.run(
-            [os.sys.executable, "-m", "build", "--sdist", "--no-isolation", "--outdir", str(tmp_path)],
-            cwd=Path(__file__).resolve().parents[1], capture_output=True, text=True, timeout=120, check=False,
-        )
-        assert built.returncode == 0, built.stdout + built.stderr
-        artifact = str(next(tmp_path.glob("*.tar.gz")))
+        artifact = str(_build_isolated_sdist(tmp_path))
     with tarfile.open(artifact) as archive:
         names = {"/".join(name.split("/")[1:]) for name in archive.getnames()}
     required = {
@@ -69,6 +65,7 @@ def test_published_sdist_includes_support_for_the_tests_it_ships(tmp_path):
         "tests/meta_full_sample.py", "tests/meta_forward_proxy.py", "tests/ci_network.py",
         "tests/test_all_meta_fields.py",
         "tests/test_live_proxy_transport.py", "scripts/check_distribution.py",
+        "tests/README.md", ".github/workflows/ci.yml", ".github/workflows/publish.yml",
     }
     required.update(f"tests/{path.name}" for path in Path(__file__).parent.glob("test_*.py"))
     assert required <= names, f"Bundled tests are missing support files: {sorted(required - names)}"
@@ -76,3 +73,60 @@ def test_published_sdist_includes_support_for_the_tests_it_ships(tmp_path):
         "_local_audit/" in name or "metaads_audit_report" in name or "docs_decision_checklist" in name
         for name in names
     )
+
+
+def _build_isolated_sdist(directory, root=None):
+    """Build from a private snapshot so concurrent builds cannot share staging files."""
+    root = root or Path(__file__).resolve().parents[1]
+    source = directory / "source"
+    source.mkdir(parents=True)
+    ignored = shutil.ignore_patterns("__pycache__", "runtime", "test-results", ".private", "artifacts")
+    for name in (
+        "pyproject.toml", "MANIFEST.in", "README.md", "LICENSE", "CHANGELOG.md",
+        "meta_ads_collector", "mcp", "tests", "scripts", "docs", ".github",
+    ):
+        original = root / name
+        if original.is_dir():
+            shutil.copytree(original, source / name, ignore=ignored)
+        else:
+            shutil.copy2(original, source / name)
+    output = directory / "dist"
+    built = subprocess.run(
+        [os.sys.executable, "-m", "build", "--sdist", "--no-isolation", "--outdir", str(output)],
+        cwd=source, capture_output=True, text=True, timeout=120, check=False,
+    )
+    assert built.returncode == 0, built.stdout + built.stderr
+    return next(output.glob("*.tar.gz"))
+
+
+def test_sdist_build_uses_private_staging_instead_of_mutating_checkout(tmp_path, monkeypatch):
+    """Reproduce shared Windows staging conflicts by guarding the build's actual cwd."""
+    root = Path(__file__).resolve().parents[1]
+    if os.environ.get("METAADS_AUDIT_SDIST"):
+        # The installed-wheel suite omits collector source. Reconstruct the actual
+        # shipped input safely, then exercise the same real build and cwd guard.
+        root = tmp_path / "archived-source"
+        root.mkdir()
+        with tarfile.open(os.environ["METAADS_AUDIT_SDIST"]) as archive:
+            for item in archive.getmembers():
+                if not item.isfile():
+                    continue
+                relative = Path(*Path(item.name).parts[1:])
+                destination = (root / relative).resolve()
+                assert root.resolve() in destination.parents, "Unsafe source archive member"
+                destination.parent.mkdir(parents=True, exist_ok=True)
+                destination.write_bytes(archive.extractfile(item).read())
+    actual_run = subprocess.run
+    working_directories = []
+
+    def record_build(*args, **kwargs):
+        working_directories.append(Path(kwargs["cwd"]).resolve())
+        return actual_run(*args, **kwargs)
+
+    monkeypatch.setattr(subprocess, "run", record_build)
+    artifact = _build_isolated_sdist(tmp_path / "isolated-build", root)
+    assert artifact.is_file()
+    assert working_directories == [(tmp_path / "isolated-build/source").resolve()]
+    assert root not in working_directories
+    with tarfile.open(artifact) as archive:
+        assert any(item.name.endswith("/.github/workflows/ci.yml") for item in archive.getmembers())

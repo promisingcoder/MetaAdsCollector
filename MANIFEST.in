@@ -6,6 +6,8 @@ include meta_ads_collector/py.typed
 recursive-include docs *.md
 recursive-include tests *.py
 recursive-include scripts *.py
+include tests/README.md
+recursive-include .github/workflows *.yml
 include mcp/README.md
 include mcp/check_distribution.py
 recursive-include mcp/tests *.py
