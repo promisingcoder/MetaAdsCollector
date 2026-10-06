@@ -1,10 +1,34 @@
 """Private optional upstream proxy configuration for actual Meta CI traffic."""
 
+import hashlib
 import os
 import uuid
 from urllib.parse import quote, unquote, urlsplit, urlunsplit
 
 from meta_ads_collector.proxy_pool import parse_proxy
+
+
+def scoped_ci_proxy(proxy, scope):
+    """Isolate a live test family while keeping all of its DNS modes on one exit.
+
+    Only our generated Apify sessions are scoped. A user's explicit session or
+    another proxy provider remains unchanged. Credentials never enter the label.
+    """
+    if not proxy:
+        return proxy
+    parsed = urlsplit(parse_proxy(proxy))
+    if parsed.hostname != "proxy.apify.com" or not parsed.username:
+        return proxy
+    parts = unquote(parsed.username).split(",")
+    sessions = [part for part in parts if part.startswith("session-")]
+    if len(sessions) != 1 or not sessions[0].startswith("session-metaads"):
+        return proxy
+    suffix = hashlib.sha256(scope.encode("utf-8")).hexdigest()[:12]
+    session = sessions[0][:44] + suffix
+    parts[parts.index(sessions[0])] = session
+    authority = quote(",".join(parts), safe="") + ":" + (parsed.password or "")
+    authority += "@" + parsed.hostname + (f":{parsed.port}" if parsed.port else "")
+    return urlunsplit(parsed._replace(netloc=authority))
 
 
 def validate_ci_proxy(proxy, required=False):

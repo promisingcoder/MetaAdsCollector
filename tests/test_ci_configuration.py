@@ -40,7 +40,7 @@ def test_published_releases_keep_full_validation_and_private_proxy_forwarding():
 
 def test_live_failures_remain_blocking_and_mcp_live_runs_after_core_live():
     jobs = workflow("ci")["jobs"]
-    for name in ("live-connectivity", "live-meta", "mcp-live"):
+    for name in ("live-connectivity", "live-proxy", "live-meta", "mcp-live"):
         job = jobs[name]
         assert job.get("continue-on-error", "false") == "false"
         assert job["env"]["METAADS_CI_PROXY"] == "${{ secrets.METAADS_CI_PROXY }}"
@@ -48,6 +48,15 @@ def test_live_failures_remain_blocking_and_mcp_live_runs_after_core_live():
             assert step.get("continue-on-error", "false") == "false"
     assert "live-meta" in jobs["mcp-live"]["needs"]
     assert any("scripts/check_distribution.py --live" in step.get("run", "") for step in jobs["live-meta"]["steps"])
+
+
+def test_sock_dns_diagnostics_run_on_actual_distribution_and_remain_blocking():
+    job = workflow("ci")["jobs"]["live-proxy"]
+    assert job["needs"] == ["distribution"]
+    assert job["runs-on"] == "macos-latest"
+    assert any("--live --proxy-diagnostics" in step.get("run", "") for step in job["steps"])
+    upload = [step for step in job["steps"] if step.get("uses", "").startswith("actions/upload-artifact")]
+    assert len(upload) == 1 and upload[0]["if"] == "always()"
 
 
 def test_public_package_verification_includes_core_and_mcp_live_tests():

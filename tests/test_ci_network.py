@@ -78,3 +78,34 @@ def test_distribution_checks_do_not_filter_out_integration_regressions():
     # Captured-data fault injection is labeled separately in the report, but
     # must still be exercised alongside every other permanent regression.
     assert '"not controlled"' not in inspect.getsource(main)
+
+
+def test_scoped_proxy_matches_dns_cases_but_separates_families(monkeypatch):
+    from urllib.parse import unquote, urlsplit
+
+    from tests.ci_network import scoped_ci_proxy
+
+    monkeypatch.setenv("GITHUB_RUN_ID", "123456789")
+    configure_ci_network(monkeypatch, "http://groups-RESIDENTIAL,country-US:ephemeral@proxy.apify.com:8000")
+    shared = os.environ["METAADS_CI_PROXY"]
+    first = scoped_ci_proxy(shared, "authenticated_socks")
+    assert first == scoped_ci_proxy(shared, "authenticated_socks")
+    assert first != scoped_ci_proxy(shared, "independent_dns")
+    assert first != shared
+    parsed = urlsplit(first)
+    parameters = unquote(parsed.username).split(",")
+    assert "groups-RESIDENTIAL" in parameters and "country-US" in parameters
+    sessions = [item.removeprefix("session-") for item in parameters if item.startswith("session-")]
+    assert len(sessions) == 1 and len(sessions[0]) <= 50
+    assert parsed.password == "ephemeral" and parsed.hostname == "proxy.apify.com" and parsed.port == 8000
+
+
+@pytest.mark.parametrize("proxy", [
+    None,
+    "http://audit:ephemeral@127.0.0.1:8123",
+    "http://groups-RESIDENTIAL,session-userchosen:ephemeral@proxy.apify.com:8000",
+])
+def test_scoped_proxy_preserves_user_selected_session_and_other_providers(proxy):
+    from tests.ci_network import scoped_ci_proxy
+
+    assert scoped_ci_proxy(proxy, "authenticated_socks") == proxy

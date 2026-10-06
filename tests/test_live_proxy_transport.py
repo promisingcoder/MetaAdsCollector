@@ -3,6 +3,8 @@
 from __future__ import annotations
 
 import ipaddress
+import json
+import os
 import secrets
 from urllib.parse import quote
 
@@ -12,6 +14,29 @@ from meta_ads_collector.client import MetaAdsClient
 from meta_ads_collector.collector import MetaAdsCollector
 
 from .meta_forward_proxy import MetaForwardProxy, MetaSocksProxy, _is_meta_host
+from .meta_transport_diagnostics import MetaTransportDiagnostics
+
+
+@pytest.fixture(autouse=True)
+def isolated_proxy_family(request, ci_meta_network, monkeypatch):
+    """Keep related DNS cases matched, separate from preceding live-suite load."""
+    from .ci_network import scoped_ci_proxy
+
+    if request.node.get_closest_marker("integration"):
+        proxy = os.environ.get("METAADS_CI_PROXY")
+        if proxy:
+            monkeypatch.setenv("METAADS_CI_PROXY", scoped_ci_proxy(proxy, request.node.originalname))
+
+
+@pytest.fixture
+def transport_diagnostics(record_property):
+    diagnostics = MetaTransportDiagnostics()
+    gateways = []
+    yield diagnostics, gateways
+    destinations = [host for gateway in gateways for host in gateway.connections]
+    evidence = json.dumps(diagnostics.snapshot(destinations), sort_keys=True)
+    record_property("meta_transport", evidence)
+    print("Meta transport metadata: " + evidence)
 
 
 def _proxy_string(proxy, form):
@@ -53,7 +78,9 @@ def test_forward_gateway_allows_meta_subdomains_without_allowing_lookalikes(host
 
 @pytest.mark.integration
 @pytest.mark.parametrize("async_mode", [False, True], ids=["sync", "async"])
-def test_live_socks5_meta_collection_survives_a_different_python_dns_view(monkeypatch, async_mode):
+def test_live_socks5_meta_collection_survives_a_different_python_dns_view(
+    monkeypatch, async_mode, transport_diagnostics,
+):
     import asyncio
     import socket
 
@@ -68,16 +95,20 @@ def test_live_socks5_meta_collection_survives_a_different_python_dns_view(monkey
 
     monkeypatch.setattr(socket, "getaddrinfo", independent_dns_view)
     with MetaSocksProxy("audit@meta", "local/" + secrets.token_hex(12)) as proxy:
+        diagnostics, gateways = transport_diagnostics
+        gateways.append(proxy)
         address = _proxy_string(proxy, "url").replace("http://", "socks5://", 1)
         if async_mode:
             async def collect():
                 async with AsyncMetaAdsCollector(proxy=address, timeout=30, max_retries=2,
                                                  rate_limit_delay=0.5, jitter=0) as collector:
+                    diagnostics.instrument(monkeypatch, collector.client)
                     return await collector.collect(query="nike", country="US", max_results=3, page_size=2)
             ads = asyncio.run(collect())
         else:
             with MetaAdsCollector(proxy=address, timeout=30, max_retries=2,
                                   rate_limit_delay=0.5, jitter=0) as collector:
+                diagnostics.instrument(monkeypatch, collector.client)
                 ads = list(collector.search(query="nike", country="US", max_results=3, page_size=2))
         assert len(ads) == 3
         assert all(ad.id and ad.page and ad.page.id for ad in ads)
@@ -169,22 +200,28 @@ def test_live_proxy_pool_routes_actual_meta_requests_through_both_proxies(async_
 @pytest.mark.integration
 @pytest.mark.parametrize("scheme", ["socks5", "socks5h"])
 @pytest.mark.parametrize("async_mode", [False, True], ids=["sync", "async"])
-def test_live_authenticated_socks_proxy_collects_actual_meta_ads(scheme, async_mode):
+def test_live_authenticated_socks_proxy_collects_actual_meta_ads(
+    scheme, async_mode, monkeypatch, transport_diagnostics,
+):
     import asyncio
 
     from meta_ads_collector.async_collector import AsyncMetaAdsCollector
 
     with MetaSocksProxy("audit@meta", "local/" + secrets.token_hex(12)) as proxy:
+        diagnostics, gateways = transport_diagnostics
+        gateways.append(proxy)
         address = _proxy_string(proxy, "url").replace("http://", scheme + "://", 1)
         if async_mode:
             async def collect():
                 async with AsyncMetaAdsCollector(proxy=address, timeout=30, max_retries=2,
                                                  rate_limit_delay=0.5, jitter=0) as collector:
+                    diagnostics.instrument(monkeypatch, collector.client)
                     return await collector.collect(query="nike", country="US", max_results=3, page_size=2)
             ads = asyncio.run(collect())
         else:
             with MetaAdsCollector(proxy=address, timeout=30, max_retries=2,
                                   rate_limit_delay=0.5, jitter=0) as collector:
+                diagnostics.instrument(monkeypatch, collector.client)
                 ads = list(collector.search(query="nike", country="US", max_results=3, page_size=2))
         assert len(ads) == 3
         assert all(ad.id and ad.page and ad.page.id for ad in ads)

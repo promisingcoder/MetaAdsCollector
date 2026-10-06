@@ -63,6 +63,7 @@ def test_published_sdist_includes_support_for_the_tests_it_ships(tmp_path):
     required = {
         "tests/__init__.py", "tests/utils.py", "tests/conftest.py", "tests/audit_meta_samples.py",
         "tests/meta_full_sample.py", "tests/meta_forward_proxy.py", "tests/ci_network.py",
+        "tests/meta_transport_diagnostics.py",
         "tests/test_all_meta_fields.py",
         "tests/test_live_proxy_transport.py", "scripts/check_distribution.py",
         "tests/README.md", ".github/workflows/ci.yml", ".github/workflows/publish.yml",

@@ -71,6 +71,7 @@ def main() -> None:
     parser.add_argument("--minimum", action="store_true", help="Pin curl-cffi to the declared minimum")
     parser.add_argument("--live", action="store_true", help="Run actual Meta integration checks")
     parser.add_argument("--preflight", action="store_true", help="Run only the bounded live connectivity check")
+    parser.add_argument("--proxy-diagnostics", action="store_true", help="Compare real Meta SOCKS DNS modes")
     parser.add_argument("--evidence-dir", type=Path, default=Path("ci-results"))
     args = parser.parse_args()
     private_values = private_proxy_values(os.environ.get("METAADS_CI_PROXY", ""))
@@ -79,6 +80,8 @@ def main() -> None:
             print("::add-mask::" + value.replace("%", "%25").replace("\r", "%0D").replace("\n", "%0A"), flush=True)
     if args.preflight and not args.live:
         parser.error("--preflight requires --live")
+    if args.proxy_diagnostics and (not args.live or args.preflight):
+        parser.error("--proxy-diagnostics requires --live and excludes --preflight")
     root = Path(__file__).resolve().parents[1]
     evidence = args.evidence_dir.resolve()
     evidence.mkdir(parents=True, exist_ok=True)
@@ -149,12 +152,18 @@ def main() -> None:
         env.pop("METAADS_AUDIT_MIN_PYTHON", None)
         if args.minimum:
             env["METAADS_AUDIT_MIN_PYTHON"] = str(python)
-        label = "preflight" if args.preflight else "live" if args.live else "minimum" if args.minimum else "wheel"
-        target = "tests/test_live_preflight.py" if args.preflight else "tests"
+        label = "proxy" if args.proxy_diagnostics else (
+            "preflight" if args.preflight else "live" if args.live else "minimum" if args.minimum else "wheel"
+        )
+        target = "tests/test_live_proxy_transport.py" if args.proxy_diagnostics else (
+            "tests/test_live_preflight.py" if args.preflight else "tests"
+        )
         command = [str(python), "-I", "-m", "pytest", target, "-v",
                    f"--junitxml={evidence / (label + '.xml')}"]
         if args.live:
             command += ["--run-integration", "-m", "integration"]
+            if args.proxy_diagnostics:
+                command += ["-k", "different_python_dns_view or authenticated_socks_proxy", "-o", "junit_family=legacy"]
         else:
             command += ["-m", "not integration"]
         try:
