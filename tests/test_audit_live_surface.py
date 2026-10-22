@@ -21,7 +21,7 @@ pytestmark = pytest.mark.integration
 
 @pytest.fixture(scope="module")
 def surface_client():
-    with MetaAdsClient(timeout=20, max_retries=2) as client:
+    with MetaAdsClient(timeout=30, max_retries=3) as client:
         client.initialize()
         yield client
 
@@ -72,7 +72,7 @@ def test_live_keyword_and_sort_modes(surface_client, search_type, sort):
 
 def test_live_stress_collection_paginates_and_deduplicates(record_property):
     """Exercise bounded real pagination while respecting request delays."""
-    with MetaAdsCollector(timeout=20, max_retries=2, rate_limit_delay=1, jitter=0.3) as collector:
+    with MetaAdsCollector(timeout=30, max_retries=3, rate_limit_delay=1, jitter=0.3) as collector:
         tracker = DeduplicationTracker()
         ads = list(collector.search(query="nike", country="US", max_results=120,
                                     page_size=10, dedup_tracker=tracker))
