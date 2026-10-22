@@ -19,7 +19,7 @@ import time
 from dataclasses import dataclass
 from pathlib import Path
 from typing import Any
-from urllib.parse import urlparse
+from urllib.parse import urlparse, urlsplit, urlunsplit
 
 from curl_cffi.requests import Session as CffiSession
 from curl_cffi.requests.exceptions import ConnectionError as CffiConnectionError
@@ -65,6 +65,31 @@ _MEDIA_FIELDS: list[tuple[str, str]] = [
 
 # Streaming chunk size (64 KiB).
 _CHUNK_SIZE: int = 65_536
+
+
+_FBCDN_SUFFIX = ".fbcdn.net"
+
+
+def fallback_media_url(url: str) -> str | None:
+    """Return the same signed media path on Meta's generic CDN host, or ``None``.
+
+    Meta serves a signed ``*.fbcdn.net`` path from any of its edges, and a
+    proxy exit can fail to reach one regional edge (``scontent.fxxx-1.fna``,
+    ``scontent-dus1-1.xx``) while the generic ``scontent.xx.fbcdn.net`` or
+    ``video.xx.fbcdn.net`` host still answers.  Non-Meta hosts and URLs that
+    already use the generic host return ``None``.
+    """
+    try:
+        parts = urlsplit(url)
+    except ValueError:
+        return None
+    host = (parts.hostname or "").lower()
+    if not host.endswith(_FBCDN_SUFFIX) or parts.port or parts.username:
+        return None
+    generic = "video.xx.fbcdn.net" if host.startswith("video") else "scontent.xx.fbcdn.net"
+    if host == generic:
+        return None
+    return urlunsplit(parts._replace(netloc=generic))
 
 
 def detect_extension_from_url(url: str) -> str | None:
@@ -258,19 +283,25 @@ class MediaDownloader:
             logger.debug("Could not stat existing file %s: %s", local_path, exc)
 
         last_error: str | None = None
+        # Odd-numbered attempts use Meta's generic CDN host so one unreachable
+        # regional edge does not exhaust the whole retry budget.
+        fallback = fallback_media_url(url)
 
         for attempt in range(self.max_retries):
             partial_path: Path | None = None
+            attempt_url = fallback if fallback and attempt % 2 == 1 else url
+            if attempt_url is not url:
+                logger.debug("Retrying %s on the generic Meta CDN host", url)
             try:
                 response = self.session.get(
-                    url, stream=True, timeout=self.timeout, allow_redirects=True,
+                    attempt_url, stream=True, timeout=self.timeout, allow_redirects=True,
                 )
                 response.raise_for_status()
 
                 # Resolve extension *after* the first response so we can
                 # use Content-Type.  If the extension changed, update the
                 # local_path accordingly.
-                ext = self._resolve_extension(url, response)
+                ext = self._resolve_extension(attempt_url, response)
                 if local_path.suffix != ext:
                     local_path = local_path.with_suffix(ext)
 
@@ -308,24 +339,24 @@ class MediaDownloader:
                 status = getattr(status, "status_code", None) if status else None
                 last_error = f"HTTP {status}: {exc}"
                 if status == 403:
-                    logger.warning("URL likely expired (403 Forbidden): %s", url)
+                    logger.warning("URL likely expired (403 Forbidden): %s", attempt_url)
                     # No point retrying an expired token
                     return False, last_error, None
                 logger.warning(
                     "HTTP error on attempt %d/%d for %s: %s",
-                    attempt + 1, self.max_retries, url, exc,
+                    attempt + 1, self.max_retries, attempt_url, exc,
                 )
             except CffiConnectionError as exc:
                 last_error = f"Connection error: {exc}"
                 logger.warning(
                     "Connection error on attempt %d/%d for %s: %s",
-                    attempt + 1, self.max_retries, url, exc,
+                    attempt + 1, self.max_retries, attempt_url, exc,
                 )
             except CffiTimeout as exc:
                 last_error = f"Timeout: {exc}"
                 logger.warning(
                     "Timeout on attempt %d/%d for %s: %s",
-                    attempt + 1, self.max_retries, url, exc,
+                    attempt + 1, self.max_retries, attempt_url, exc,
                 )
             except OSError as exc:
                 last_error = f"IO error: {exc}"
@@ -336,7 +367,7 @@ class MediaDownloader:
                 last_error = f"Unexpected error: {exc}"
                 logger.warning(
                     "Unexpected error on attempt %d/%d for %s: %s",
-                    attempt + 1, self.max_retries, url, exc,
+                    attempt + 1, self.max_retries, attempt_url, exc,
                 )
             finally:
                 if partial_path is not None:

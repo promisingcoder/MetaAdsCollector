@@ -31,6 +31,13 @@ def _one_live_thumbnail_or_image(collected_ads):
     pytest.skip("Meta returned no image or thumbnail for this live sample")
 
 
+def _retry_urls(url):
+    """The creative URL plus its generic Meta CDN host alternate used on odd retries."""
+    from meta_ads_collector.media import fallback_media_url
+
+    return {url, fallback_media_url(url) or url}
+
+
 def _inject_initial_connect_failures(downloader, monkeypatch, failures):
     """Record every attempt; after controlled failures delegate to real Meta."""
     from curl_cffi.requests.exceptions import ConnectionError
@@ -61,7 +68,7 @@ def test_live_relative_media_directory_reports_an_absolute_path(tmp_path, monkey
         downloader.session.close()
     assert result.success, result.error
     assert failures + 1 <= len(requests) <= downloader.max_retries
-    assert all(url == ad.creatives[0].image_url for url in requests)
+    assert all(url in _retry_urls(ad.creatives[0].image_url) for url in requests)
     assert result.local_path is not None
     assert Path(result.local_path).is_absolute()
     assert Path(result.local_path).is_relative_to((tmp_path / "relative-live-media").resolve())
@@ -81,7 +88,7 @@ def test_live_meta_media_with_controlled_proxy_connect_590_is_bounded(
         result = downloader.download_ad_media(ad)[0]
     finally:
         downloader.session.close()
-    assert all(url == ad.creatives[0].image_url for url in requests)
+    assert all(url in _retry_urls(ad.creatives[0].image_url) for url in requests)
     assert len(requests) <= downloader.max_retries
     if failures < downloader.max_retries:
         assert failures + 1 <= len(requests)

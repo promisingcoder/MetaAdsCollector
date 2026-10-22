@@ -31,6 +31,9 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 ### Changed
 - `page.likes` and `page.is_deleted` are populated from search rows; `funding_entity` and `disclaimer`
   mapping is unchanged.
+- Media downloads alternate between the creative's regional `*.fbcdn.net` edge and Meta's generic
+  `scontent.xx.fbcdn.net` / `video.xx.fbcdn.net` host across the existing retry budget, so one unreachable edge
+  (for example behind a proxy) no longer fails the download. Non-Meta URLs are unchanged.
 - CI: the bounded live connectivity check allows three bootstrap attempts and GitHub Actions are pinned to
   their current Node 24 majors. Actual Meta invocations retry transport failures on the private proxy leg
   (curl timeouts, upstream `CONNECT` 590, rate limits) up to twice; data and behaviour assertions still fail
