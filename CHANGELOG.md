@@ -5,6 +5,41 @@ All notable changes to this project will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [1.7.0] - 2026-10-22
+
+### Added
+- `MetaAdsClient.get_ad_insights()` / `AsyncMetaAdsClient.get_ad_insights()`: the Ad Library "See ad details"
+  query (`AdLibraryV3AdDetailsQuery`). `get_ad_details()` and `enrich_ad()` now attach its payload under
+  `ad_details`, so enriched ads carry EU/UK/BR transparency (age, gender and location audience, total reach,
+  per-country age/gender reach breakdown), US political demographic and regional insights, payer/beneficiary
+  data, advertiser page info (verification, category, Instagram handle and followers, about text, cover photo),
+  page spend by disclaimer, verified-voice context and violation types.
+- New normalized `Ad` fields: `page_categories`, `impressions_text`, `impressions_index`, `extra_texts`,
+  `extra_links`, `extra_images`, `extra_videos`, `ad_details`, `eu_transparency`, `uk_transparency`,
+  `br_transparency`, `eu_total_reach`, `targets_eu`, `payer_beneficiary_data`, `aaa_info`, `insights`,
+  `page_spend`, `violation_types`, `verified_voice_context`, `is_violating_eu_siep`. `targeting`,
+  `age_gender_distribution`, `region_distribution` and `beneficiary_payers` are filled from the details payload.
+- New `AdCreative` fields: `original_image_url`, `resized_image_url`, `watermarked_image_url`,
+  `watermarked_video_hd_url`, `watermarked_video_sd_url`, `image_crops`.
+- New `PageInfo` fields: `verification`, `category`, `alias`, `entity_type`, `is_deleted`, `is_restricted`,
+  `is_profile_page`, `about`, `cover_photo_url`, `ig_username`, `ig_followers`, `ig_verified`.
+- CSV exports share one schema (`meta_ads_collector.exports.CSV_COLUMNS`) and add `creative_video_url`,
+  `cta_text`, `cta_type`, `display_format`, `page_like_count`, `page_categories`, `categories`, `bylines`,
+  `impressions_text`, `reach_lower`, `reach_upper`, `eu_total_reach`, `payer_beneficiary`, `targeted_countries`,
+  `collation_id` and `collation_count` columns before `collected_at` and `api_fields`.
+
+### Changed
+- `page.likes` and `page.is_deleted` are populated from search rows; `funding_entity` and `disclaimer`
+  mapping is unchanged.
+- CI: the bounded live connectivity check allows three bootstrap attempts and GitHub Actions are pinned to
+  their current Node 24 majors.
+
+## [1.6.0] - 2026-10-01
+
+### Added
+- Optional MCP extension (`pip install "meta-ads-collector[mcp]"`) with durable jobs, monitoring and the
+  `meta-ads-mcp` command; beginner quick starts in the README.
+
 ## [1.5.1] - 2026-10-01
 
 ### Fixed

@@ -58,6 +58,7 @@ from .exceptions import (
     RateLimitError,
     SessionExpiredError,
 )
+from .exports import CSV_COLUMNS, ad_to_csv_row
 from .filters import FilterConfig, passes_filter
 from .media import MediaDownloader, MediaDownloadResult
 from .models import Ad, PageSearchResult
@@ -1104,39 +1105,9 @@ class MetaAdsCollector:
         path = Path(output_path)
         path.parent.mkdir(parents=True, exist_ok=True)
 
-        # Define CSV columns (flattened schema)
-        columns = [
-            "id",
-            "page_id",
-            "page_name",
-            "page_url",
-            "is_active",
-            "ad_status",
-            "delivery_start_time",
-            "delivery_stop_time",
-            "creative_body",
-            "creative_title",
-            "creative_description",
-            "creative_link_url",
-            "creative_image_url",
-            "snapshot_url",
-            "impressions_lower",
-            "impressions_upper",
-            "spend_lower",
-            "spend_upper",
-            "currency",
-            "publisher_platforms",
-            "languages",
-            "funding_entity",
-            "disclaimer",
-            "ad_type",
-            "collected_at",
-            "api_fields",
-        ]
-
         count = 0
         with open(path, "w", newline="", encoding="utf-8") as f:
-            writer = csv.DictWriter(f, fieldnames=columns)
+            writer = csv.DictWriter(f, fieldnames=list(CSV_COLUMNS))
             writer.writeheader()
 
             for ad in self.search(
@@ -1152,39 +1123,7 @@ class MetaAdsCollector:
                 filter_config=filter_config,
                 dedup_tracker=dedup_tracker,
             ):
-                # Flatten ad data for CSV
-                primary_creative = ad.creatives[0] if ad.creatives else None
-
-                row = {
-                    "id": ad.id,
-                    "page_id": ad.page.id if ad.page else "",
-                    "page_name": ad.page.name if ad.page else "",
-                    "page_url": ad.page.page_url if ad.page else "",
-                    "is_active": ad.is_active if ad.is_active is not None else "",
-                    "ad_status": ad.ad_status or "",
-                    "delivery_start_time": ad.delivery_start_time.isoformat() if ad.delivery_start_time else "",
-                    "delivery_stop_time": ad.delivery_stop_time.isoformat() if ad.delivery_stop_time else "",
-                    "creative_body": primary_creative.body if primary_creative else "",
-                    "creative_title": primary_creative.title if primary_creative else "",
-                    "creative_description": primary_creative.description if primary_creative else "",
-                    "creative_link_url": primary_creative.link_url if primary_creative else "",
-                    "creative_image_url": primary_creative.image_url if primary_creative else "",
-                    "snapshot_url": ad.snapshot_url or ad.ad_snapshot_url or "",
-                    "impressions_lower": ad.impressions.lower_bound if ad.impressions else "",
-                    "impressions_upper": ad.impressions.upper_bound if ad.impressions else "",
-                    "spend_lower": ad.spend.lower_bound if ad.spend else "",
-                    "spend_upper": ad.spend.upper_bound if ad.spend else "",
-                    "currency": ad.currency or "",
-                    "publisher_platforms": ",".join(ad.publisher_platforms),
-                    "languages": ",".join(ad.languages),
-                    "funding_entity": ad.funding_entity or "",
-                    "disclaimer": ad.disclaimer or "",
-                    "ad_type": ad.ad_type or "",
-                    "collected_at": ad.collected_at.isoformat(),
-                    "api_fields": json.dumps(ad.api_fields, ensure_ascii=False),
-                }
-
-                writer.writerow(row)
+                writer.writerow(ad_to_csv_row(ad))
                 count += 1
 
         logger.info(f"Saved {count} ads to {output_path}")

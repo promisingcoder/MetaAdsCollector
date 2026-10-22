@@ -14,8 +14,9 @@ from typing import Any
 
 from curl_cffi.requests import AsyncSession as CffiAsyncSession
 
-from .client import MetaAdsClient
+from .client import MetaAdsClient, parse_ad_details_response
 from .constants import (
+    DOC_ID_AD_DETAILS,
     DOC_ID_SEARCH,
     DOC_ID_TYPEAHEAD,
     FALLBACK_REV,
@@ -698,10 +699,54 @@ class AsyncMetaAdsClient:
             logger.error("Typeahead search failed: %s", exc)
             return []
 
+    async def get_ad_insights(
+        self, ad_archive_id: str, page_id: str, country: str = "ALL",
+    ) -> dict[str, Any]:
+        """Fetch the "See ad details" payload (async version).
+
+        Same parameters, return value and errors as
+        :meth:`~meta_ads_collector.client.MetaAdsClient.get_ad_insights`.
+        """
+        import uuid
+
+        if not self._initialized:
+            await self.initialize()
+
+        variables = {
+            "adArchiveID": str(ad_archive_id),
+            "pageID": str(page_id),
+            "country": country,
+            "sessionID": str(uuid.uuid4()),
+            "source": None,
+            "isAdNonPolitical": False,
+            "isAdNotAAAEligible": False,
+        }
+        doc_id = self._doc_ids.get("AdLibraryV3AdDetailsQuery", DOC_ID_AD_DETAILS)
+        payload = self._build_graphql_payload(
+            doc_id=doc_id, variables=variables, friendly_name="AdLibraryV3AdDetailsQuery",
+        )
+        headers = dict(self._fingerprint.get_graphql_headers())
+        headers["x-fb-friendly-name"] = "AdLibraryV3AdDetailsQuery"
+        headers["x-fb-lsd"] = self._tokens.get("lsd", "")
+        if "x-asbd-id" in self._tokens:
+            headers["x-asbd-id"] = self._tokens["x-asbd-id"]
+        headers["referer"] = f"{self.AD_LIBRARY_URL}?id={ad_archive_id}"
+
+        response = await self._make_request(
+            "POST", self.GRAPHQL_URL, data=payload, headers=headers,
+        )
+        if response.status_code != 200:
+            raise MetaAdsError(f"Ad details request failed with status {response.status_code}")
+        text = response.text
+        if text.startswith("for (;;);"):
+            text = text[9:]
+        return parse_ad_details_response(json.loads(text), ad_archive_id)
+
     async def get_ad_details(
         self,
         ad_archive_id: str,
         page_id: str | None = None,
+        country: str = "ALL",
     ) -> dict[str, Any]:
         """Fetch detailed ad data (async version).
 
@@ -714,7 +759,10 @@ class AsyncMetaAdsClient:
            filtered by *page_id*, looking for the specific
            ``ad_archive_id`` in the results.
 
-        2. **Ad Library detail page** (best-effort fallback): loads
+        2. **Ad details query**: :meth:`get_ad_insights`, attached under
+           the ``ad_details`` key.
+
+        3. **Ad Library detail page** (best-effort fallback): loads
            ``/ads/library/?id={archive_id}`` and extracts embedded JSON
            from the server-rendered HTML.  The page currently answers
            curl_cffi with a 403 JS challenge, so any non-200 response
@@ -722,6 +770,9 @@ class AsyncMetaAdsClient:
         """
         if not self._initialized:
             await self.initialize()
+
+        row: dict[str, Any] | None = None
+        details: dict[str, Any] | None = None
 
         # Approach 1: page-scoped GraphQL search
         if page_id:
@@ -742,11 +793,26 @@ class AsyncMetaAdsClient:
                         or ""
                     )
                     if found_id == str(ad_archive_id):
-                        return dict(ad_data)
+                        row = dict(ad_data)
+                        break
             except Exception as exc:
                 logger.debug("Approach 1 failed for ad %s: %s", ad_archive_id, exc)
 
-        # Approach 2: detail page (best-effort; may be 403-challenged)
+            # Approach 2: ad details query
+            try:
+                details = await self.get_ad_insights(ad_archive_id, page_id, country=country)
+            except Exception as exc:
+                logger.warning("Ad details query failed for ad %s: %s", ad_archive_id, exc)
+
+        if row is not None or details is not None:
+            result: dict[str, Any] = row if row is not None else {
+                "ad_archive_id": str(ad_archive_id), "page_id": str(page_id),
+            }
+            if details is not None:
+                result["ad_details"] = details
+            return result
+
+        # Approach 3: detail page (best-effort; may be 403-challenged)
         try:
             headers = dict(self._fingerprint.get_default_headers())
             headers["referer"] = self.AD_LIBRARY_URL
@@ -773,11 +839,11 @@ class AsyncMetaAdsClient:
                     return detail_data
             else:
                 logger.debug(
-                    "Approach 2: detail page returned HTTP %d for ad %s",
+                    "Approach 3: detail page returned HTTP %d for ad %s",
                     response.status_code, ad_archive_id,
                 )
         except Exception as exc:
-            logger.debug("Approach 2 failed for ad %s: %s", ad_archive_id, exc)
+            logger.debug("Approach 3 failed for ad %s: %s", ad_archive_id, exc)
 
         raise NotImplementedError(
             f"Could not retrieve detail data for ad {ad_archive_id}. "

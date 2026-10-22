@@ -54,6 +54,10 @@ DEFAULT_PAGE_SIZE = 10  # results per API request (max ~30)
 # ---------------------------------------------------------------------------
 DOC_ID_SEARCH = "25464068859919530"  # AdLibrarySearchPaginationQuery
 DOC_ID_TYPEAHEAD = "9755915494515334"  # useAdLibraryTypeaheadSuggestionDataSourceQuery
+# AdLibraryV3AdDetailsQuery -- the "See ad details" panel: EU/UK/BR transparency,
+# demographic insights, payer/beneficiary data and advertiser page info.
+# Last verified working: 2026-10-22
+DOC_ID_AD_DETAILS = "25068828942793558"
 
 # ---------------------------------------------------------------------------
 # Fallback token values

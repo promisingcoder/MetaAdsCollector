@@ -116,7 +116,7 @@ with MetaAdsCollector() as collector:
         print(ad.id, advertiser)
 ```
 
-The library also supports pagination, async collection, filters, exports, media downloads, and HTTP/HTTPS/SOCKS proxies. Fields supplied by Meta are preserved in `ad.api_fields`; individual ads may lack spend, impressions, media, or audience details. JSON/JSONL exports retain `api_fields`; CSV includes it as a JSON column.
+The library also supports pagination, async collection, filters, exports, media downloads, and HTTP/HTTPS/SOCKS proxies. Fields supplied by Meta are preserved in `ad.api_fields`; individual ads may lack spend, impressions, media, or audience details. JSON/JSONL exports retain `api_fields`; CSV includes it as a JSON column. Pass `--enrich` (or call `collector.enrich_ad(ad)`) to add the Ad Library "See ad details" payload: EU/UK transparency audience and reach, US political demographics, payer/beneficiary data and advertiser page details.
 
 MetaAdsCollector uses internal Meta endpoints. Meta can change or restrict access, so network, proxy, verification, or rate-limit failures can occur. An empty query result does not establish that no matching ads exist. Keep result limits small when starting, and check errors before treating a collection as complete.
 

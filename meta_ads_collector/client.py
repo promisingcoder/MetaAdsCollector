@@ -23,6 +23,7 @@ from .constants import (
     DEFAULT_MAX_RETRIES,
     DEFAULT_RETRY_DELAY,
     DEFAULT_TIMEOUT,
+    DOC_ID_AD_DETAILS,
     DOC_ID_SEARCH,
     DOC_ID_TYPEAHEAD,
     FALLBACK_REV,
@@ -32,12 +33,42 @@ from .constants import (
 from .exceptions import (
     AuthenticationError,
     MetaAdsError,
+    RateLimitError,
     SessionExpiredError,
 )
 from .fingerprint import BrowserFingerprint, generate_fingerprint
 from .proxy_pool import ProxyPool, parse_proxy
 
 logger = logging.getLogger(__name__)
+
+
+def parse_ad_details_response(data: Any, ad_archive_id: str) -> dict[str, Any]:
+    """Extract the ``ad_details`` object from an ``AdLibraryV3AdDetailsQuery`` reply.
+
+    Raises :class:`RateLimitError` when Meta reports a rate limit and
+    :class:`MetaAdsError` when the reply carries no details object.  Partial
+    replies (``errors`` alongside a populated ``ad_details``) are returned
+    as-is because Meta uses field-level errors for sections it cannot fill.
+    """
+    errors = data.get("errors") if isinstance(data, dict) else None
+    messages: list[str] = []
+    for error in errors or []:
+        if not isinstance(error, dict):
+            continue
+        message = str(error.get("message", "Unknown error"))
+        if error.get("code") == 1675004 or "rate limit" in message.lower():
+            raise RateLimitError(f"Ad details rate limited for ad {ad_archive_id}: {message}")
+        messages.append(message)
+    payload = data.get("data") if isinstance(data, dict) else None
+    main = payload.get("ad_library_main") if isinstance(payload, dict) else None
+    details = main.get("ad_details") if isinstance(main, dict) else None
+    if not isinstance(details, dict) or not details:
+        reason = "; ".join(messages) if messages else "empty ad_details payload"
+        raise MetaAdsError(f"Ad details unavailable for ad {ad_archive_id}: {reason}")
+    if messages:
+        logger.debug("Ad details for %s returned partial data: %s", ad_archive_id, messages)
+    return details
+
 
 
 class MetaAdsClient:
@@ -1356,18 +1387,93 @@ class MetaAdsClient:
             logger.error("Failed to parse typeahead response: %s", exc)
             return []
 
-    def get_ad_details(self, ad_archive_id: str, page_id: Optional[str] = None) -> dict[str, Any]:
+    def get_ad_insights(
+        self, ad_archive_id: str, page_id: str, country: str = "ALL",
+    ) -> dict[str, Any]:
+        """Fetch the "See ad details" payload for one ad.
+
+        Runs the ``AdLibraryV3AdDetailsQuery`` GraphQL document that the
+        Ad Library UI issues when an ad's details panel is opened.  The
+        returned ``ad_details`` object holds everything that the search
+        row does not: advertiser page info (verification, category,
+        Instagram handle, likes, about text), page spend by disclaimer,
+        EU/UK/BR transparency (age, gender and location audience, total
+        reach and the per-country age/gender reach breakdown), US
+        political demographic and regional insights, payer/beneficiary
+        data, verified-voice context and violation types.
+
+        Args:
+            ad_archive_id: The numeric archive ID of the ad.
+            page_id: The advertiser page ID (required by Meta).
+            country: Country code used by the UI; ``"ALL"`` returns the
+                complete payload.
+
+        Returns:
+            The raw ``ad_details`` dict.  Pass it as the ``ad_details``
+            key of a search row to :meth:`Ad.from_graphql_response`.
+
+        Raises:
+            MetaAdsError: If Meta returns no ``ad_details`` object.
+            RateLimitError: If Meta reports a rate limit.
+        """
+        if not self._initialized:
+            self.initialize()
+        if self._is_session_stale():
+            logger.info("Session is stale, refreshing before request...")
+            if not self._refresh_session():
+                raise SessionExpiredError("Failed to refresh stale session")
+
+        variables = {
+            "adArchiveID": str(ad_archive_id),
+            "pageID": str(page_id),
+            "country": country,
+            "sessionID": self._generate_session_id(),
+            "source": None,
+            # Both flags request the full payload; Meta returns null
+            # sections for ads where they do not apply.
+            "isAdNonPolitical": False,
+            "isAdNotAAAEligible": False,
+        }
+        doc_id = self._doc_ids.get("AdLibraryV3AdDetailsQuery", DOC_ID_AD_DETAILS)
+        payload = self._build_graphql_payload(
+            doc_id=doc_id, variables=variables, friendly_name="AdLibraryV3AdDetailsQuery",
+        )
+        headers = dict(self._fingerprint.get_graphql_headers())
+        headers["x-fb-friendly-name"] = "AdLibraryV3AdDetailsQuery"
+        headers["x-fb-lsd"] = self._tokens.get("lsd", "")
+        if "x-asbd-id" in self._tokens:
+            headers["x-asbd-id"] = self._tokens["x-asbd-id"]
+        headers["referer"] = f"{self.AD_LIBRARY_URL}?id={ad_archive_id}"
+
+        response = self._make_graphql_request(payload, headers)
+        if response.status_code != 200:
+            raise MetaAdsError(f"Ad details request failed with status {response.status_code}")
+        text = response.text
+        if text.startswith("for (;;);"):
+            text = text[9:]
+        data = json.loads(text)
+        details = parse_ad_details_response(data, ad_archive_id)
+        self._consecutive_errors = 0
+        return details
+
+    def get_ad_details(
+        self, ad_archive_id: str, page_id: Optional[str] = None, country: str = "ALL",
+    ) -> dict[str, Any]:
         """Fetch detailed ad data beyond what search results provide.
 
         Approaches attempted (in order):
 
         1. **Collated search with page_id**: If *page_id* is supplied,
            performs a targeted search filtered by page ID and looks for
-           the specific ``ad_archive_id`` in the results.  This can
-           surface extra fields that are only returned when a page-scoped
-           query is made.
+           the specific ``ad_archive_id`` in the results.  This yields
+           the current search row (creatives, page fields, metrics).
 
-        2. **Ad Library detail page** (best-effort fallback): Loads
+        2. **Ad details query**: If *page_id* is supplied, fetches the
+           "See ad details" payload with :meth:`get_ad_insights` and
+           attaches it under the ``ad_details`` key (EU/UK transparency,
+           demographic insights, payer/beneficiary data, advertiser info).
+
+        3. **Ad Library detail page** (best-effort fallback): Loads
            ``https://www.facebook.com/ads/library/?id={archive_id}`` and
            extracts embedded JSON data from the server-rendered HTML.
            NOTE: this page currently returns HTTP 403 (JS challenge) to
@@ -1376,17 +1482,22 @@ class MetaAdsClient:
 
         Args:
             ad_archive_id: The numeric archive ID of the ad.
-            page_id: Optional page ID to enable approach 1.
+            page_id: Optional page ID to enable approaches 1 and 2.
+            country: Country code for the details query (default ``"ALL"``).
 
         Returns:
             A dict of parsed ad detail data.  Keys are a superset of the
-            fields available in search results.
+            fields available in search results, plus ``ad_details`` when
+            the details query succeeded.
 
         Raises:
             NotImplementedError: If no approach yields useful data.
         """
         if not self._initialized:
             self.initialize()
+
+        row: Optional[dict[str, Any]] = None
+        details: Optional[dict[str, Any]] = None
 
         # ── Approach 1: targeted page-scoped search ───────────────
         if page_id:
@@ -1411,11 +1522,26 @@ class MetaAdsClient:
                             "Approach 1 succeeded for ad %s via page %s",
                             ad_archive_id, page_id,
                         )
-                        return dict(ad_data)
+                        row = dict(ad_data)
+                        break
             except Exception as exc:
                 logger.debug("Approach 1 failed for ad %s: %s", ad_archive_id, exc)
 
-        # ── Approach 2: Ad Library detail page (best effort) ──────
+            # ── Approach 2: ad details query ──────────────────────
+            try:
+                details = self.get_ad_insights(ad_archive_id, page_id, country=country)
+            except Exception as exc:
+                logger.warning("Ad details query failed for ad %s: %s", ad_archive_id, exc)
+
+        if row is not None or details is not None:
+            result: dict[str, Any] = row if row is not None else {
+                "ad_archive_id": str(ad_archive_id), "page_id": str(page_id),
+            }
+            if details is not None:
+                result["ad_details"] = details
+            return result
+
+        # ── Approach 3: Ad Library detail page (best effort) ──────
         # This page 403s non-browser clients at the moment, so tolerate
         # failure quickly and move on.
         try:
@@ -1440,21 +1566,21 @@ class MetaAdsClient:
                 detail_data = self._parse_ad_detail_page(response.text, ad_archive_id)
                 if detail_data:
                     logger.debug(
-                        "Approach 2 succeeded for ad %s: %d fields",
+                        "Approach 3 succeeded for ad %s: %d fields",
                         ad_archive_id, len(detail_data),
                     )
                     return detail_data
                 logger.debug(
-                    "Approach 2: page loaded but no detail data found for ad %s",
+                    "Approach 3: page loaded but no detail data found for ad %s",
                     ad_archive_id,
                 )
             else:
                 logger.debug(
-                    "Approach 2 failed for ad %s: HTTP %d",
+                    "Approach 3 failed for ad %s: HTTP %d",
                     ad_archive_id, response.status_code,
                 )
         except Exception as exc:
-            logger.debug("Approach 2 failed for ad %s: %s", ad_archive_id, exc)
+            logger.debug("Approach 3 failed for ad %s: %s", ad_archive_id, exc)
 
         raise NotImplementedError(
             f"Could not retrieve detail data for ad {ad_archive_id}. "

@@ -86,51 +86,14 @@ class TestCSVExport:
         """
         output_file = tmp_path / "test_output.csv"
 
-        # Define expected columns (matching collector.collect_to_csv)
-        columns = [
-            "id", "page_id", "page_name", "page_url", "is_active",
-            "ad_status", "delivery_start_time", "delivery_stop_time",
-            "creative_body", "creative_title", "creative_description",
-            "creative_link_url", "creative_image_url", "snapshot_url",
-            "impressions_lower", "impressions_upper", "spend_lower",
-            "spend_upper", "currency", "publisher_platforms", "languages",
-            "funding_entity", "disclaimer", "ad_type", "collected_at",
-        ]
+        from meta_ads_collector.exports import CSV_COLUMNS, ad_to_csv_row
 
-        # Write CSV
+        columns = list(CSV_COLUMNS)
         with open(output_file, "w", newline="", encoding="utf-8") as f:
             writer = csv.DictWriter(f, fieldnames=columns)
             writer.writeheader()
             for ad in collected_ads:
-                primary = ad.creatives[0] if ad.creatives else None
-                row = {
-                    "id": ad.id,
-                    "page_id": ad.page.id if ad.page else "",
-                    "page_name": ad.page.name if ad.page else "",
-                    "page_url": ad.page.page_url if ad.page else "",
-                    "is_active": ad.is_active if ad.is_active is not None else "",
-                    "ad_status": ad.ad_status or "",
-                    "delivery_start_time": ad.delivery_start_time.isoformat() if ad.delivery_start_time else "",
-                    "delivery_stop_time": ad.delivery_stop_time.isoformat() if ad.delivery_stop_time else "",
-                    "creative_body": primary.body if primary else "",
-                    "creative_title": primary.title if primary else "",
-                    "creative_description": primary.description if primary else "",
-                    "creative_link_url": primary.link_url if primary else "",
-                    "creative_image_url": primary.image_url if primary else "",
-                    "snapshot_url": ad.snapshot_url or ad.ad_snapshot_url or "",
-                    "impressions_lower": ad.impressions.lower_bound if ad.impressions else "",
-                    "impressions_upper": ad.impressions.upper_bound if ad.impressions else "",
-                    "spend_lower": ad.spend.lower_bound if ad.spend else "",
-                    "spend_upper": ad.spend.upper_bound if ad.spend else "",
-                    "currency": ad.currency or "",
-                    "publisher_platforms": ",".join(ad.publisher_platforms),
-                    "languages": ",".join(ad.languages),
-                    "funding_entity": ad.funding_entity or "",
-                    "disclaimer": ad.disclaimer or "",
-                    "ad_type": ad.ad_type or "",
-                    "collected_at": ad.collected_at.isoformat(),
-                }
-                writer.writerow(row)
+                writer.writerow(ad_to_csv_row(ad))
 
         # Read back and validate
         with open(output_file, encoding="utf-8") as f:

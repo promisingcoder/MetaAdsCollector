@@ -162,6 +162,13 @@ class AdCreative:
     thumbnail_url: str | None = None
     cta_text: str | None = None
     cta_type: str | None = None
+    # Additional media variants Meta returns alongside the primary URLs
+    original_image_url: str | None = None
+    resized_image_url: str | None = None
+    watermarked_image_url: str | None = None
+    watermarked_video_hd_url: str | None = None
+    watermarked_video_sd_url: str | None = None
+    image_crops: Any = None
 
     def to_dict(self) -> dict[str, Any]:
         return {k: v for k, v in asdict(self).items() if v is not None}
@@ -176,6 +183,19 @@ class PageInfo:
     page_url: str | None = None
     likes: int | None = None
     verified: bool = False
+    # Fields supplied by the ad details query (advertiser block)
+    verification: str | None = None  # BLUE_VERIFIED, GRAY_VERIFIED, NOT_VERIFIED
+    category: str | None = None
+    alias: str | None = None
+    entity_type: str | None = None
+    is_deleted: bool | None = None
+    is_restricted: bool | None = None
+    is_profile_page: bool | None = None
+    about: str | None = None
+    cover_photo_url: str | None = None
+    ig_username: str | None = None
+    ig_followers: int | None = None
+    ig_verified: bool | None = None
 
     def to_dict(self) -> dict[str, Any]:
         return asdict(self)
@@ -305,6 +325,28 @@ class Ad:
     is_reshared: bool | None = None
     root_reshared_post: Any = None
     fev_info: Any = None
+    page_categories: list[str] = field(default_factory=list)
+    impressions_text: str | None = None
+    impressions_index: int | None = None
+    extra_texts: Any = None
+    extra_links: Any = None
+    extra_images: Any = None
+    extra_videos: Any = None
+
+    # Fields supplied by the ad details query (``ad_details`` payload)
+    ad_details: dict[str, Any] | None = None  # lossless copy of the details payload
+    eu_transparency: dict[str, Any] | None = None
+    uk_transparency: dict[str, Any] | None = None
+    br_transparency: dict[str, Any] | None = None
+    eu_total_reach: int | None = None
+    targets_eu: bool | None = None
+    payer_beneficiary_data: list[dict[str, Any]] = field(default_factory=list)
+    aaa_info: dict[str, Any] | None = None
+    insights: dict[str, Any] | None = None
+    page_spend: dict[str, Any] | None = None
+    violation_types: list[Any] = field(default_factory=list)
+    verified_voice_context: Any = None
+    is_violating_eu_siep: bool | None = None
 
     # Metadata
     collation_id: str | None = None
@@ -391,6 +433,26 @@ class Ad:
             "is_reshared": self.is_reshared,
             "root_reshared_post": self.root_reshared_post,
             "fev_info": self.fev_info,
+            "page_categories": self.page_categories,
+            "impressions_text": self.impressions_text,
+            "impressions_index": self.impressions_index,
+            "extra_texts": self.extra_texts,
+            "extra_links": self.extra_links,
+            "extra_images": self.extra_images,
+            "extra_videos": self.extra_videos,
+            "ad_details": deepcopy(self.ad_details),
+            "eu_transparency": deepcopy(self.eu_transparency),
+            "uk_transparency": deepcopy(self.uk_transparency),
+            "br_transparency": deepcopy(self.br_transparency),
+            "eu_total_reach": self.eu_total_reach,
+            "targets_eu": self.targets_eu,
+            "payer_beneficiary_data": deepcopy(self.payer_beneficiary_data),
+            "aaa_info": deepcopy(self.aaa_info),
+            "insights": deepcopy(self.insights),
+            "page_spend": deepcopy(self.page_spend),
+            "violation_types": deepcopy(self.violation_types),
+            "verified_voice_context": deepcopy(self.verified_voice_context),
+            "is_violating_eu_siep": self.is_violating_eu_siep,
             "collation_id": self.collation_id,
             "collation_count": self.collation_count,
             "collected_at": self.collected_at.isoformat(),
@@ -485,6 +547,158 @@ class Ad:
         return TargetingInfo(age_min, age_max, genders, locations,
                              location_types, interests, excluded)
 
+    @staticmethod
+    def _parse_ad_details(
+        raw: Any,
+        page: PageInfo | None,
+        age_gender_dist: list[AudienceDistribution],
+        region_dist: list[AudienceDistribution],
+    ) -> dict[str, Any]:
+        """Normalize the ``ad_details`` payload returned by the details query.
+
+        The payload is the object behind the Ad Library's "See ad details"
+        panel: advertiser page info, EU/UK/BR transparency (audience,
+        reach breakdown), US political demographic insights, payer and
+        beneficiary data and verified-voice context.  Fields already set
+        from the search row are never overwritten; ``age_gender_dist`` and
+        ``region_dist`` are extended in place only when empty.
+        """
+        empty: dict[str, Any] = {
+            "page": page, "targeting": None, "beneficiary_payers": [], "ad_details": None,
+            "eu_transparency": None, "uk_transparency": None, "br_transparency": None,
+            "eu_total_reach": None, "targets_eu": None, "payer_beneficiary_data": [],
+            "aaa_info": None, "insights": None, "page_spend": None, "violation_types": [],
+            "verified_voice_context": None, "is_violating_eu_siep": None,
+        }
+        if not isinstance(raw, dict) or not raw:
+            return empty
+        result = dict(empty)
+        result["ad_details"] = deepcopy(raw)
+
+        def block(value: Any) -> dict[str, Any]:
+            return value if isinstance(value, dict) else {}
+
+        # Advertiser / page information
+        advertiser = block(raw.get("advertiser"))
+        library_page = block(advertiser.get("ad_library_page_info"))
+        page_info = block(library_page.get("page_info"))
+        about = block(block(advertiser.get("page")).get("about")).get("text")
+        if page_info or about:
+            if page is None:
+                page = PageInfo(id="", name="")
+            page_id = page_info.get("page_id") or block(advertiser.get("page")).get("id")
+            if not page.id and page_id is not None:
+                page.id = str(page_id)
+            if not page.name and page_info.get("page_name"):
+                page.name = str(page_info["page_name"])
+            if page.likes is None:
+                page.likes = _numeric_bound(page_info.get("likes"))
+            if not page.page_url and page_info.get("page_profile_uri"):
+                page.page_url = page_info["page_profile_uri"]
+            if not page.profile_picture_url and page_info.get("profile_photo"):
+                page.profile_picture_url = page_info["profile_photo"]
+            verification = page_info.get("page_verification")
+            if isinstance(verification, str) and verification:
+                page.verification = verification
+                page.verified = page.verified or verification not in ("NOT_VERIFIED", "UNVERIFIED")
+            for attribute, key in (
+                ("category", "page_category"), ("alias", "page_alias"), ("entity_type", "entity_type"),
+                ("is_deleted", "page_is_deleted"), ("is_restricted", "page_is_restricted"),
+                ("is_profile_page", "is_profile_page"), ("cover_photo_url", "page_cover_photo"),
+                ("ig_username", "ig_username"), ("ig_verified", "ig_verification"),
+            ):
+                value = page_info.get(key)
+                if getattr(page, attribute) in (None, "") and value not in (None, ""):
+                    setattr(page, attribute, value)
+            if page.ig_followers is None:
+                page.ig_followers = _numeric_bound(page_info.get("ig_followers"))
+            if not page.about and isinstance(about, str) and about.strip():
+                page.about = about
+        result["page"] = page
+        if isinstance(library_page.get("page_spend"), dict):
+            result["page_spend"] = deepcopy(library_page["page_spend"])
+
+        # Demographic / regional insights (US political and issue ads)
+        insights = raw.get("insights")
+        if isinstance(insights, dict):
+            result["insights"] = deepcopy(insights)
+            if not age_gender_dist:
+                for item in insights.get("age_gender_data") or []:
+                    if not isinstance(item, dict):
+                        continue
+                    age_range = item.get("age_range", "unknown")
+                    for gender in ("female", "male", "unknown"):
+                        value = item.get(gender)
+                        if isinstance(value, bool) or value is None:
+                            continue
+                        try:
+                            age_gender_dist.append(AudienceDistribution(f"{age_range}_{gender}", float(value)))
+                        except (TypeError, ValueError, OverflowError):
+                            continue
+            if not region_dist:
+                for item in insights.get("location_data") or []:
+                    if not isinstance(item, dict) or item.get("reach") is None:
+                        continue
+                    try:
+                        region = str(item.get("region", "unknown"))
+                        region_dist.append(AudienceDistribution(region, float(item["reach"])))
+                    except (TypeError, ValueError, OverflowError):
+                        continue
+
+        # Regional transparency (EU DSA, UK, Brazil)
+        transparency = block(raw.get("transparency_by_location"))
+        for key in ("eu_transparency", "uk_transparency", "br_transparency"):
+            if isinstance(transparency.get(key), dict):
+                result[key] = deepcopy(transparency[key])
+        eu = block(transparency.get("eu_transparency"))
+        result["eu_total_reach"] = _numeric_bound(eu.get("eu_total_reach"))
+        if isinstance(eu.get("targets_eu"), bool):
+            result["targets_eu"] = eu["targets_eu"]
+        audience = eu or block(transparency.get("uk_transparency"))
+        if audience:
+            age = block(audience.get("age_audience"))
+            gender_audience = audience.get("gender_audience")
+            locations: list[str] = []
+            excluded: list[str] = []
+            location_types: list[str] = []
+            for item in audience.get("location_audience") or []:
+                if not isinstance(item, dict) or not item.get("name"):
+                    continue
+                (excluded if item.get("excluded") else locations).append(str(item["name"]))
+                if item.get("type") and str(item["type"]) not in location_types:
+                    location_types.append(str(item["type"]))
+            age_min = _numeric_bound(age.get("min"))
+            age_max = _numeric_bound(age.get("max"))
+            genders = [gender_audience] if isinstance(gender_audience, str) and gender_audience else []
+            if any((age_min is not None, age_max is not None, genders, locations, excluded)):
+                result["targeting"] = TargetingInfo(
+                    age_min=age_min, age_max=age_max, genders=genders, locations=locations,
+                    location_types=location_types, excluded_locations=excluded,
+                )
+
+        # Payer / beneficiary (EU) and verified voice context
+        aaa = raw.get("aaa_info")
+        if isinstance(aaa, dict):
+            result["aaa_info"] = deepcopy(aaa)
+            if result["targets_eu"] is None and isinstance(aaa.get("targets_eu"), bool):
+                result["targets_eu"] = aaa["targets_eu"]
+            pairs = [item for item in aaa.get("payer_beneficiary_data") or [] if isinstance(item, dict)]
+            result["payer_beneficiary_data"] = deepcopy(pairs)
+            names: list[str] = []
+            for item in pairs:
+                for key in ("payer", "beneficiary"):
+                    value = item.get(key)
+                    if isinstance(value, str) and value and value not in names:
+                        names.append(value)
+            result["beneficiary_payers"] = names
+        if isinstance(raw.get("violation_types"), list):
+            result["violation_types"] = deepcopy(raw["violation_types"])
+        if raw.get("verified_voice_context") is not None:
+            result["verified_voice_context"] = deepcopy(raw["verified_voice_context"])
+        if isinstance(raw.get("is_violating_eu_siep"), bool):
+            result["is_violating_eu_siep"] = raw["is_violating_eu_siep"]
+        return result
+
     @classmethod
     def from_graphql_response(cls, data: dict[str, Any]) -> Ad:
         """
@@ -533,7 +747,8 @@ class Ad:
                 name=data.get("page_name", ""),
                 profile_picture_url=data.get("page_profile_picture_url"),
                 page_url=data.get("page_profile_uri"),
-                likes=data.get("page_like_count"),
+                likes=_numeric_bound(data.get("page_like_count")),
+                is_deleted=data.get("page_is_deleted") if isinstance(data.get("page_is_deleted"), bool) else None,
             )
 
         # Map page_categories to the Ad categories field when present
@@ -560,6 +775,12 @@ class Ad:
                     thumbnail_url=card.get("video_preview_image_url"),
                     cta_text=card.get("cta_text") or data.get("cta_text"),
                     cta_type=card.get("cta_type"),
+                    original_image_url=card.get("original_image_url"),
+                    resized_image_url=card.get("resized_image_url"),
+                    watermarked_image_url=card.get("watermarked_resized_image_url"),
+                    watermarked_video_hd_url=card.get("watermarked_video_hd_url"),
+                    watermarked_video_sd_url=card.get("watermarked_video_sd_url"),
+                    image_crops=deepcopy(card.get("image_crops")),
                 )
                 creatives.append(creative)
         else:
@@ -598,6 +819,12 @@ class Ad:
                         thumbnail_url=video.get("video_preview_image_url"),
                         cta_text=data.get("cta_text"),
                         cta_type=data.get("cta_type"),
+                        original_image_url=image.get("original_image_url"),
+                        resized_image_url=image.get("resized_image_url"),
+                        watermarked_image_url=image.get("watermarked_resized_image_url"),
+                        watermarked_video_hd_url=video.get("watermarked_video_hd_url"),
+                        watermarked_video_sd_url=video.get("watermarked_video_sd_url"),
+                        image_crops=deepcopy(image.get("image_crops")),
                     ))
             else:
                 # ── Legacy fallback: ad_creative_bodies arrays ──────
@@ -649,6 +876,11 @@ class Ad:
                             creative.link_url = card.get("link_url")
                             creative.cta_text = card.get("cta_text")
                             creative.cta_type = card.get("cta_type")
+                            creative.original_image_url = card.get("original_image_url")
+                            creative.resized_image_url = card.get("resized_image_url")
+                            creative.watermarked_image_url = card.get("watermarked_resized_image_url")
+                            creative.watermarked_video_hd_url = card.get("watermarked_video_hd_url")
+                            creative.watermarked_video_sd_url = card.get("watermarked_video_sd_url")
 
         # Parse dates
         delivery_start = None
@@ -664,9 +896,17 @@ class Ad:
 
         # Parse impressions
         impressions = None
+        impressions_text: str | None = None
+        impressions_index: int | None = None
         imp_data = _first_present(
             data, "impressions", "impressionsWithIndex", "impressions_with_index"
         )
+        if isinstance(imp_data, dict):
+            raw_text = imp_data.get("impressions_text") or imp_data.get("impressionsText")
+            impressions_text = str(raw_text) if raw_text else None
+            impressions_index = _numeric_bound(imp_data.get("impressions_index", imp_data.get("impressionsIndex")))
+        elif isinstance(imp_data, str) and imp_data.strip():
+            impressions_text = imp_data
         if imp_data is not None:
             if isinstance(imp_data, str):
                 lower, upper = _parse_impression_text(imp_data)
@@ -751,6 +991,17 @@ class Ad:
             if ad_status_val:
                 is_active = ad_status_val == "ACTIVE"
 
+        targeting = cls._parse_targeting(data)
+
+        # ── Ad details payload (AdLibraryV3AdDetailsQuery) ──────────
+        details = cls._parse_ad_details(data.get("ad_details"), page, age_gender_dist, region_dist)
+        page = details["page"]
+        if targeting is None:
+            targeting = details["targeting"]
+        beneficiary_payers = data.get("beneficiary_payers") or data.get("beneficiaryPayers") or []
+        if not beneficiary_payers:
+            beneficiary_payers = details["beneficiary_payers"]
+
         return cls(
             id=str(data.get("id") or data.get("adArchiveID") or data.get("ad_archive_id", "")),
             ad_library_id=data.get("adLibraryID") or data.get("ad_library_id"),
@@ -768,7 +1019,7 @@ class Ad:
             currency=data.get("currency"),
             age_gender_distribution=age_gender_dist,
             region_distribution=region_dist,
-            targeting=cls._parse_targeting(data),
+            targeting=targeting,
             estimated_audience_size_lower=(
                 _numeric_bound(_first_present(data.get("estimated_audience_size", {}), "lower_bound", "lowerBound"))
                 if isinstance(data.get("estimated_audience_size"), dict) else None
@@ -787,7 +1038,7 @@ class Ad:
             disclaimer=_first_present(data, "disclaimer", "disclaimer_label", "disclaimerLabel"),
             ad_type=data.get("ad_type") or data.get("adType"),
             categories=data.get("categories") or page_categories,
-            beneficiary_payers=data.get("beneficiary_payers") or data.get("beneficiaryPayers") or [],
+            beneficiary_payers=beneficiary_payers,
             collation_id=_first_present(data, "collation_id", "collationID"),
             collation_count=_numeric_bound(_first_present(data, "collation_count", "collationCount")),
             ad_id=(
@@ -829,6 +1080,26 @@ class Ad:
                 data, "root_reshared_post", "rootResharedPost"
             )),
             fev_info=deepcopy(_first_present(data, "fev_info", "fevInfo")),
+            page_categories=[str(item) for item in _as_list(data.get("page_categories") or data.get("pageCategories"))],
+            impressions_text=impressions_text,
+            impressions_index=impressions_index,
+            extra_texts=deepcopy(_first_present(data, "extra_texts", "extraTexts")),
+            extra_links=deepcopy(_first_present(data, "extra_links", "extraLinks")),
+            extra_images=deepcopy(_first_present(data, "extra_images", "extraImages")),
+            extra_videos=deepcopy(_first_present(data, "extra_videos", "extraVideos")),
+            ad_details=details["ad_details"],
+            eu_transparency=details["eu_transparency"],
+            uk_transparency=details["uk_transparency"],
+            br_transparency=details["br_transparency"],
+            eu_total_reach=details["eu_total_reach"],
+            targets_eu=details["targets_eu"],
+            payer_beneficiary_data=details["payer_beneficiary_data"],
+            aaa_info=details["aaa_info"],
+            insights=details["insights"],
+            page_spend=details["page_spend"],
+            violation_types=details["violation_types"],
+            verified_voice_context=details["verified_voice_context"],
+            is_violating_eu_siep=details["is_violating_eu_siep"],
             raw_data=deepcopy(original_data),
         )
 

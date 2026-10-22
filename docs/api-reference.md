@@ -137,7 +137,7 @@ Download media files for a single ad.
 
 #### `enrich_ad(ad) -> Ad`
 
-Fetch additional detail data from the ad detail endpoint and merge into the ad object. Returns the original ad unchanged on failure.
+Fetch the current search row and the "See ad details" payload for the ad (see `MetaAdsClient.get_ad_details`) and merge every missing field into a copy of the ad. The details payload is kept under `ad.ad_details` and inside `ad.api_fields`; EU/UK transparency, demographic insights, payer/beneficiary data and advertiser page info are normalized into `targeting`, `age_gender_distribution`, `region_distribution`, `beneficiary_payers`, `page` and the `eu_*`/`payer_beneficiary_data` fields. Returns the original ad unchanged on failure.
 
 #### `stream(query, ...) -> Iterator[tuple[str, dict[str, Any]]]`
 
@@ -239,9 +239,13 @@ Search for ads via the GraphQL API. Returns `(response_data, next_cursor)`.
 
 Search for pages using the typeahead endpoint. Returns a list of page dicts.
 
-#### `get_ad_details(ad_archive_id, page_id) -> dict`
+#### `get_ad_details(ad_archive_id, page_id=None, country="ALL") -> dict`
 
-Fetch detailed ad data. Tries the detail page first, then a page-scoped search.
+Fetch detailed ad data. With `page_id`, runs a page-scoped search to obtain the current search row, then `get_ad_insights()` and attaches its payload under the `ad_details` key. Without `page_id`, only the (currently JS-challenged) HTML detail page is attempted. Raises `NotImplementedError` when nothing is available.
+
+#### `get_ad_insights(ad_archive_id, page_id, country="ALL") -> dict`
+
+Run the Ad Library "See ad details" query (`AdLibraryV3AdDetailsQuery`) and return its `ad_details` object: `advertiser` (page info, about text, page spend by disclaimer), `insights` (US political age/gender and regional reach), `transparency_by_location` (`eu_transparency`, `uk_transparency`, `br_transparency` with age, gender and location audience, total reach and per-country age/gender breakdown), `aaa_info` (payer/beneficiary data), `verified_voice_context`, `violation_types` and `is_violating_eu_siep`. Pass the result as the `ad_details` key of a search row to `Ad.from_graphql_response()`. Raises `MetaAdsError` when Meta returns no details and `RateLimitError` on rate limits.
 
 #### `close() -> None`
 
@@ -308,6 +312,20 @@ Normalized ad schema for the fields parsed by this package. Meta may omit fields
 | `page_is_deleted`, `contains_sensitive_content`, `contains_digital_created_media`, `is_aaa_eligible` | `bool \| None` | Meta eligibility and content flags |
 | `has_user_reported`, `report_count`, `hide_data_status`, `gated_type` | `Any` | Reporting and visibility fields as returned |
 | `branded_content`, `event`, `menu_items`, `is_reshared`, `root_reshared_post`, `fev_info` | `Any` | Additional response fields where present |
+| `page_categories` | `list[str]` | Advertiser page categories from the search row |
+| `impressions_text`, `impressions_index` | `str \| None`, `int \| None` | Meta's impression bucket label (for example `>1M`) and index |
+| `extra_texts`, `extra_links`, `extra_images`, `extra_videos` | `Any` | Additional creative variants as returned |
+| `ad_details` | `dict \| None` | Lossless "See ad details" payload (set by `enrich_ad()` / `get_ad_details()`) |
+| `eu_transparency`, `uk_transparency`, `br_transparency` | `dict \| None` | Regional transparency blocks: audience, reach and per-country breakdown |
+| `eu_total_reach` | `int \| None` | EU total reach from `eu_transparency` |
+| `targets_eu` | `bool \| None` | Whether the ad targets the EU |
+| `payer_beneficiary_data` | `list[dict]` | `{"payer", "beneficiary"}` pairs from `aaa_info` |
+| `aaa_info` | `dict \| None` | Payer/beneficiary block including takedown and violation flags |
+| `insights` | `dict \| None` | US political `age_gender_data` and `location_data` |
+| `page_spend` | `dict \| None` | Advertiser lifetime and weekly spend by disclaimer |
+| `violation_types` | `list` | Violation types reported by Meta |
+| `verified_voice_context` | `Any` | Verified-voice and financial-services payer/beneficiary context |
+| `is_violating_eu_siep` | `bool \| None` | EU SIEP violation flag |
 | `collation_id` | `str \| None` | Collation group ID |
 | `collation_count` | `int \| None` | Number of collated variants |
 | `api_fields` | `dict \| None` | Deep copy of the complete API row, including unrecognized and nested fields; included in exports by default |
@@ -339,6 +357,9 @@ Normalized ad schema for the fields parsed by this package. Meta may omit fields
 | `thumbnail_url` | `str \| None` | Video thumbnail URL |
 | `cta_text` | `str \| None` | Call-to-action text |
 | `cta_type` | `str \| None` | CTA type identifier |
+| `original_image_url`, `resized_image_url`, `watermarked_image_url` | `str \| None` | Image variants as returned |
+| `watermarked_video_hd_url`, `watermarked_video_sd_url` | `str \| None` | Watermarked video variants |
+| `image_crops` | `Any` | Crop metadata as returned |
 
 ### class PageInfo
 
@@ -350,6 +371,11 @@ Normalized ad schema for the fields parsed by this package. Meta may omit fields
 | `page_url` | `str \| None` | `None` | Page URL |
 | `likes` | `int \| None` | `None` | Like count |
 | `verified` | `bool` | `False` | Verification status |
+| `verification` | `str \| None` | `None` | `BLUE_VERIFIED`, `GRAY_VERIFIED` or `NOT_VERIFIED` (details query) |
+| `category`, `alias`, `entity_type` | `str \| None` | `None` | Page category, vanity alias and entity type (details query) |
+| `is_deleted`, `is_restricted`, `is_profile_page` | `bool \| None` | `None` | Page state flags |
+| `about`, `cover_photo_url` | `str \| None` | `None` | About text and cover photo (details query) |
+| `ig_username`, `ig_followers`, `ig_verified` | `str \| None`, `int \| None`, `bool \| None` | `None` | Linked Instagram account (details query) |
 
 ### class PageSearchResult
 
