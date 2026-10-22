@@ -13,6 +13,7 @@ import pytest
 from meta_ads_collector.client import MetaAdsClient
 from meta_ads_collector.collector import MetaAdsCollector
 
+from . import meta_forward_proxy
 from .meta_forward_proxy import MetaForwardProxy, MetaSocksProxy, _is_meta_host
 from .meta_transport_diagnostics import MetaTransportDiagnostics
 
@@ -74,6 +75,49 @@ def test_socks_gateway_does_not_require_an_independent_meta_dns_snapshot(monkeyp
 ])
 def test_forward_gateway_allows_meta_subdomains_without_allowing_lookalikes(host, allowed):
     assert _is_meta_host(host) is allowed
+
+
+def test_upstream_tunnel_retries_one_stalled_attempt_within_the_client_budget(monkeypatch):
+    import socket
+
+    attempts = []
+    opened = socket.socket()
+    try:
+        def flaky_upstream(host, port, upstream, server_name, timeout):
+            attempts.append(timeout)
+            if len(attempts) == 1:
+                raise socket.timeout("upstream stalled")
+            return opened
+
+        monkeypatch.setattr(meta_forward_proxy, "_connect_upstream_once", flaky_upstream)
+        remote = meta_forward_proxy._connect_remote("www.facebook.com", 443, "http://user:pw@upstream.example:8080")
+        assert remote is opened
+        assert attempts == [meta_forward_proxy.UPSTREAM_ATTEMPT_TIMEOUT] * 2
+        assert meta_forward_proxy.UPSTREAM_ATTEMPTS * meta_forward_proxy.UPSTREAM_ATTEMPT_TIMEOUT < 30
+        assert remote.gettimeout() == meta_forward_proxy.RELAY_TIMEOUT
+    finally:
+        opened.close()
+
+
+def test_upstream_tunnel_reports_a_persistent_stall_as_a_gateway_error(monkeypatch):
+    import socket
+
+    def stalled_upstream(host, port, upstream, server_name, timeout):
+        raise socket.timeout("upstream stalled")
+
+    monkeypatch.setattr(meta_forward_proxy, "_connect_upstream_once", stalled_upstream)
+    with pytest.raises(OSError, match="2 attempts"):
+        meta_forward_proxy._connect_remote("www.facebook.com", 443, "socks5h://upstream.example:1080")
+
+
+def test_direct_tunnel_does_not_use_the_upstream_retry_path(monkeypatch):
+    import socket
+
+    monkeypatch.setattr(meta_forward_proxy, "_connect_upstream_once", lambda *args: pytest.fail("no upstream"))
+    created = []
+    monkeypatch.setattr(socket, "create_connection", lambda address, timeout: created.append((address, timeout)))
+    meta_forward_proxy._connect_remote("www.facebook.com", 443, None)
+    assert created == [(("www.facebook.com", 443), meta_forward_proxy.RELAY_TIMEOUT)]
 
 
 @pytest.mark.integration

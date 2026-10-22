@@ -27,15 +27,37 @@ def _is_meta_host(host):
     return name == "facebook.com" or name.endswith((".facebook.com", ".fbcdn.net"))
 
 
+# A residential upstream occasionally stalls while it opens its own leg to
+# Meta. Give each upstream attempt a bounded budget and retry once so one
+# stalled connection stays inside the client's 30 s request timeout.
+UPSTREAM_ATTEMPTS = 2
+UPSTREAM_ATTEMPT_TIMEOUT = 14
+RELAY_TIMEOUT = 30
+
+
 def _connect_remote(host, port, upstream, server_name=None):
     """Open an opaque Meta tunnel, optionally through a private CI proxy."""
     if not upstream:
-        return socket.create_connection((host, port), timeout=30)
+        return socket.create_connection((host, port), timeout=RELAY_TIMEOUT)
+    failure = None
+    for _attempt in range(UPSTREAM_ATTEMPTS):
+        try:
+            remote = _connect_upstream_once(host, port, upstream, server_name, UPSTREAM_ATTEMPT_TIMEOUT)
+        except OSError as exc:
+            failure = exc
+            continue
+        remote.settimeout(RELAY_TIMEOUT)
+        return remote
+    raise OSError(f"Upstream proxy did not open a Meta tunnel in {UPSTREAM_ATTEMPTS} attempts") from failure
+
+
+def _connect_upstream_once(host, port, upstream, server_name, timeout):
+    """One bounded attempt to open the tunnel through the configured upstream proxy."""
     proxy = urlsplit(upstream)
     username = unquote(proxy.username) if proxy.username is not None else None
     password = unquote(proxy.password) if proxy.password is not None else None
     if proxy.scheme in {"http", "https"}:
-        remote = socket.create_connection((proxy.hostname, proxy.port), timeout=30)
+        remote = socket.create_connection((proxy.hostname, proxy.port), timeout=timeout)
         try:
             if proxy.scheme == "https":
                 import certifi
@@ -73,7 +95,7 @@ def _connect_remote(host, port, upstream, server_name=None):
         remote.set_proxy(kind, proxy.hostname, proxy.port,
                          rdns=proxy.scheme in {"socks4a", "socks5h"},
                          username=username, password=password)
-        remote.settimeout(30)
+        remote.settimeout(timeout)
         remote.connect((host, port))
         return remote
     except Exception:
