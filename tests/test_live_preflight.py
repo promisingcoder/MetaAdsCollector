@@ -8,7 +8,8 @@ from meta_ads_collector.models import Ad
 
 @pytest.mark.integration
 def test_live_meta_bootstrap_search_and_field_fidelity():
-    with MetaAdsClient(timeout=20, max_retries=1) as client:
+    # Residential CI egress can stall a single bootstrap attempt; allow a bounded retry budget.
+    with MetaAdsClient(timeout=30, max_retries=3) as client:
         client.initialize()
         response, _cursor = client.search_ads(query="nike", country="US", first=2)
     assert not response.get("error"), response.get("error")
