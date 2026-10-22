@@ -2,7 +2,6 @@
 
 from __future__ import annotations
 
-import asyncio
 import csv
 import json
 import time
@@ -368,12 +367,13 @@ def _async_client(search_rows, reply, status=200):
     return client, captured
 
 
-def test_async_get_ad_details_combines_search_row_and_details():
+@pytest.mark.asyncio
+async def test_async_get_ad_details_combines_search_row_and_details():
     row = deepcopy(COMMERCIAL_EU_DETAILS["search_row"])
     details = COMMERCIAL_EU_DETAILS["ad_details"]
     client, captured = _async_client([row], _graphql_reply(details))
 
-    result = asyncio.run(client.get_ad_details(row["ad_archive_id"], page_id=row["page_id"]))
+    result = await client.get_ad_details(row["ad_archive_id"], page_id=row["page_id"])
 
     assert result == {**row, "ad_details": details}
     assert captured["doc_id"] == DOC_ID_AD_DETAILS
@@ -382,16 +382,18 @@ def test_async_get_ad_details_combines_search_row_and_details():
     assert client._make_request.await_count == 1
 
 
-def test_async_get_ad_insights_raises_on_missing_details():
+@pytest.mark.asyncio
+async def test_async_get_ad_insights_raises_on_missing_details():
     client, _ = _async_client([], _graphql_reply(None, errors=[{"message": "nope", "code": 3}]))
     with pytest.raises(MetaAdsError, match="nope"):
-        asyncio.run(client.get_ad_insights("1", "2"))
+        await client.get_ad_insights("1", "2")
 
 
-def test_async_get_ad_details_raises_when_every_approach_fails():
+@pytest.mark.asyncio
+async def test_async_get_ad_details_raises_when_every_approach_fails():
     client, _ = _async_client([], _graphql_reply(None, errors=[{"message": "nope", "code": 3}]))
     with pytest.raises(NotImplementedError):
-        asyncio.run(client.get_ad_details("1", page_id="2"))
+        await client.get_ad_details("1", page_id="2")
 
 
 # ---------------------------------------------------------------------------
@@ -456,13 +458,10 @@ def test_live_ad_insights_return_the_details_panel_for_an_actual_ad(collected_ad
 
 
 @pytest.mark.integration
-def test_live_async_ad_insights_match_the_sync_payload_shape(collected_ads):
+@pytest.mark.asyncio
+async def test_live_async_ad_insights_match_the_sync_payload_shape(collected_ads):
     source = next(ad for ad in collected_ads if ad.page and ad.page.id)
-
-    async def fetch():
-        async with AsyncMetaAdsClient(timeout=30, max_retries=2) as client:
-            return await client.get_ad_insights(source.id, source.page.id)
-
-    details = asyncio.run(fetch())
+    async with AsyncMetaAdsClient(timeout=30, max_retries=2) as client:
+        details = await client.get_ad_insights(source.id, source.page.id)
     assert details["advertiser"]["ad_library_page_info"]["page_info"]["page_id"] == source.page.id
     assert set(details) >= {"advertiser", "transparency_by_location", "violation_types"}
