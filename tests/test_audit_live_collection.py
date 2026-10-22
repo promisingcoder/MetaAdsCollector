@@ -153,7 +153,7 @@ def test_live_enrichment_preserves_identity_for_an_actually_returned_ad(
             "delivery_stop_time", "snapshot_url", "ad_snapshot_url", "impressions",
             "spend", "reach", "currency", "estimated_audience_size_lower",
             "estimated_audience_size_upper", "funding_entity", "disclaimer", "ad_type",
-            "targeting",
+            "targeting", "ad_details", "eu_transparency", "eu_total_reach", "insights", "page_spend",
         )
         list_fields = (
             "publisher_platforms", "languages", "categories", "bylines",
@@ -170,7 +170,7 @@ def test_live_enrichment_preserves_identity_for_an_actually_returned_ad(
         if source.page is None and details.page and details.page.id:
             candidates["page"] = details.page
         elif source.page and details.page:
-            for field_name in ("profile_picture_url", "page_url", "likes"):
+            for field_name in ("profile_picture_url", "page_url", "likes", "verification", "category", "about"):
                 detail_value = getattr(details.page, field_name)
                 if getattr(source.page, field_name) in (None, "", 0) and detail_value:
                     candidates[f"page.{field_name}"] = detail_value
