@@ -32,7 +32,9 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - `page.likes` and `page.is_deleted` are populated from search rows; `funding_entity` and `disclaimer`
   mapping is unchanged.
 - CI: the bounded live connectivity check allows three bootstrap attempts and GitHub Actions are pinned to
-  their current Node 24 majors.
+  their current Node 24 majors. Actual Meta invocations retry transport failures on the private proxy leg
+  (curl timeouts, upstream `CONNECT` 590, rate limits) up to twice; data and behaviour assertions still fail
+  on the first attempt. The local test gateways retry one stalled upstream attempt per client request.
 
 ## [1.6.0] - 2026-10-01
 

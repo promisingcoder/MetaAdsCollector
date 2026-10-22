@@ -51,6 +51,7 @@ dev = [
     "pytest>=7.0",
     "pytest-cov>=4.0",
     "pytest-asyncio>=0.21",
+    "pytest-rerunfailures>=15",
     "requests>=2.28.0",
     "PyYAML>=6.0",
     "PySocks>=1.7.1",

@@ -1,5 +1,18 @@
 # CI regression cases
 
+## Live transport reruns
+
+All actual Meta invocations (`scripts/check_distribution.py --live ...` and
+`mcp/check_distribution.py --live`) run pytest with `--reruns 2 --reruns-delay 15`
+and an `--only-rerun` allowlist of transport failures: curl timeouts, stalled or
+refused upstream tunnels (`CONNECT tunnel failed, response 590`), connection
+resets, DNS failures, Meta rate limits and bootstrap authentication errors caused
+by them. Every other failure (wrong field values, missing ads, library errors)
+fails on the first attempt. `test_live_invocations_retry_only_transport_failures`
+keeps the two scripts' allowlists identical and checks representative messages.
+The live test gateways also retry one stalled upstream attempt within a single
+client request (`tests/meta_forward_proxy.py`).
+
 ## SOCKS DNS modes and private CI sessions
 
 `live-proxy` installs the built wheel outside the checkout and runs all six

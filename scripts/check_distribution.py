@@ -24,6 +24,38 @@ def run(command: list[str], **kwargs) -> None:
     subprocess.run(command, check=True, **kwargs)
 
 
+# Live checks reach Meta through a third-party residential proxy. Transport
+# failures on that leg (stalled tunnels, CONNECT 590 from the upstream, curl
+# timeouts, Meta rate limits) are retried a bounded number of times. Assertion
+# failures about Meta's data or the library's behaviour are never retried.
+LIVE_TRANSPORT_ERRORS = (
+    r"Timeout",
+    r"timed out",
+    r"CurlError",
+    r"CONNECT tunnel",
+    r"\b590\b",
+    r"RateLimitError",
+    r"rate limit",
+    r"AuthenticationError",
+    r"SessionExpiredError",
+    r"Connection error",
+    r"ConnectionError",
+    r"ConnectionReset",
+    r"RemoteDisconnected",
+    r"Could not resolve",
+)
+LIVE_RERUNS = 2
+LIVE_RERUN_DELAY_SECONDS = 15
+
+
+def live_rerun_arguments() -> list[str]:
+    """pytest-rerunfailures options applied to every actual Meta invocation."""
+    arguments = ["--reruns", str(LIVE_RERUNS), "--reruns-delay", str(LIVE_RERUN_DELAY_SECONDS)]
+    for pattern in LIVE_TRANSPORT_ERRORS:
+        arguments += ["--only-rerun", pattern]
+    return arguments
+
+
 def private_proxy_values(proxy: str) -> set[str]:
     """Values to mask in runner output and remove from uploaded evidence."""
     values = {proxy} if proxy else set()
@@ -161,7 +193,7 @@ def main() -> None:
         command = [str(python), "-I", "-m", "pytest", target, "-v",
                    f"--junitxml={evidence / (label + '.xml')}"]
         if args.live:
-            command += ["--run-integration", "-m", "integration"]
+            command += ["--run-integration", "-m", "integration", *live_rerun_arguments()]
             if args.proxy_diagnostics:
                 command += ["-k", "different_python_dns_view or authenticated_socks_proxy", "-o", "junit_family=legacy"]
         else:

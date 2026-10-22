@@ -13,6 +13,33 @@ import venv
 import zipfile
 from pathlib import Path
 
+# Keep in sync with scripts/check_distribution.py (asserted by tests/test_ci_configuration.py).
+LIVE_TRANSPORT_ERRORS = (
+    r"Timeout",
+    r"timed out",
+    r"CurlError",
+    r"CONNECT tunnel",
+    r"\b590\b",
+    r"RateLimitError",
+    r"rate limit",
+    r"AuthenticationError",
+    r"SessionExpiredError",
+    r"Connection error",
+    r"ConnectionError",
+    r"ConnectionReset",
+    r"RemoteDisconnected",
+    r"Could not resolve",
+)
+LIVE_RERUNS = 2
+LIVE_RERUN_DELAY_SECONDS = 15
+
+
+def live_rerun_arguments() -> list[str]:
+    arguments = ["--reruns", str(LIVE_RERUNS), "--reruns-delay", str(LIVE_RERUN_DELAY_SECONDS)]
+    for pattern in LIVE_TRANSPORT_ERRORS:
+        arguments += ["--only-rerun", pattern]
+    return arguments
+
 
 def main():
     parser = argparse.ArgumentParser(description=__doc__)
@@ -68,7 +95,8 @@ def main():
         )
         assert missing_extra.returncode == 2 and "[mcp]" in missing_extra.stderr
         subprocess.run(
-            [str(python), "-m", "pip", "install", str(wheel) + "[mcp]", "pytest", "pytest-asyncio", "pytest-cov"],
+            [str(python), "-m", "pip", "install", str(wheel) + "[mcp]", "pytest", "pytest-asyncio", "pytest-cov",
+             "pytest-rerunfailures"],
             cwd=work,
             env=environment,
             check=True,
@@ -112,7 +140,7 @@ def main():
             "--junitxml=" + str(report),
         ]
         if args.live:
-            command.append("--run-mcp-live")
+            command += ["--run-mcp-live", *live_rerun_arguments()]
         subprocess.run(command, cwd=work, env=environment, check=True)
 
 

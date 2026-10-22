@@ -1,21 +1,31 @@
 """Regression contracts for the actual branch, release and private live CI configuration."""
 
 import os
+import re
 import tarfile
 from pathlib import Path
 
 import yaml
 
 
-def workflow(name):
-    relative = f".github/workflows/{name}.yml"
+def repository_text(relative):
     sdist = os.environ.get("METAADS_AUDIT_SDIST")
     if sdist:
         with tarfile.open(sdist) as archive:
             member, = [member for member in archive.getmembers() if member.name.endswith("/" + relative)]
-            content = archive.extractfile(member).read().decode("utf-8")
-    else:
-        content = (Path(__file__).resolve().parents[1] / relative).read_text(encoding="utf-8")
+            return archive.extractfile(member).read().decode("utf-8")
+    return (Path(__file__).resolve().parents[1] / relative).read_text(encoding="utf-8")
+
+
+def script_namespace(relative):
+    namespace = {"__name__": "check_distribution_under_test"}
+    exec(compile(repository_text(relative), relative, "exec"), namespace)
+    return namespace
+
+
+def workflow(name):
+    relative = f".github/workflows/{name}.yml"
+    content = repository_text(relative)
     # BaseLoader preserves the GitHub event key 'on', which YAML 1.1 otherwise
     # interprets as a boolean. These contracts intentionally compare scalar strings.
     return yaml.load(content, Loader=yaml.BaseLoader)
@@ -65,3 +75,28 @@ def test_public_package_verification_includes_core_and_mcp_live_tests():
     assert "scripts/check_distribution.py --published current --live" in commands
     assert "mcp/check_distribution.py --dist-dir published-dist --live" in commands
     assert verification.get("continue-on-error", "false") == "false"
+
+
+def test_live_invocations_retry_only_transport_failures():
+    core = script_namespace("scripts/check_distribution.py")
+    extension = script_namespace("mcp/check_distribution.py")
+    assert extension["LIVE_TRANSPORT_ERRORS"] == core["LIVE_TRANSPORT_ERRORS"]
+    assert extension["live_rerun_arguments"]() == core["live_rerun_arguments"]()
+    arguments = core["live_rerun_arguments"]()
+    assert arguments[:4] == ["--reruns", "2", "--reruns-delay", "15"]
+    patterns = [arguments[index + 1] for index, flag in enumerate(arguments) if flag == "--only-rerun"]
+    assert patterns == list(core["LIVE_TRANSPORT_ERRORS"])
+
+    def retried(message):
+        return any(re.search(pattern, message) for pattern in patterns)
+
+    # Failures observed on the residential CI proxy leg are retried.
+    assert retried("Timeout: Failed to perform, curl: (28) Connection timed out after 30004 milliseconds")
+    assert retried("AssertionError: Connection error: Failed to perform, curl: (7) CONNECT tunnel failed, response 590")
+    assert retried("AuthenticationError: Failed to initialize async client: Failed to perform, curl: (28)")
+    assert retried("RateLimitError: Max retries exceeded due to rate limiting")
+    # Failures about Meta's data or the library's behaviour are not.
+    assert not retried("AssertionError: assert 2 == 3")
+    assert not retried("AssertionError: Actual Meta detail field eu_total_reach was not enriched")
+    assert not retried("KeyError: 'ad_archive_id'")
+    assert not retried("AssertionError: Meta preflight returned no ads for the broad query")
