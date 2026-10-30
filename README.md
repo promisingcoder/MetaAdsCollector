@@ -1,5 +1,9 @@
 # MetaAdsCollector
+[![PyPI version](https://img.shields.io/pypi/v/meta-ads-collector)](https://pypi.org/project/meta-ads-collector/)
+[![PyPI downloads](https://img.shields.io/pypi/dm/meta-ads-collector)](https://pypi.org/project/meta-ads-collector/)
+[![License: MIT](https://img.shields.io/badge/license-MIT-blue.svg)](LICENSE)
 
+**📦 PyPI:** [pypi.org/project/meta-ads-collector](https://pypi.org/project/meta-ads-collector/) &nbsp;·&nbsp; **Install:** `pip install meta-ads-collector`
 Collect ads from the [Meta Ad Library](https://www.facebook.com/ads/library/) using a command-line tool, Python, or an AI assistant through MCP. No Meta API key is required.
 
 ## Installation
