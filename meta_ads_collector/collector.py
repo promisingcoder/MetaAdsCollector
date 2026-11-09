@@ -955,6 +955,11 @@ class MetaAdsCollector:
                     ),
                 )
 
+            # PageInfo.verified defaults to False, which the merge keeps as a
+            # real value; a verified advertiser in the details must still win.
+            if result.page is not None and enriched.page is not None and enriched.page.verified:
+                result.page.verified = True
+
             logger.debug("Enriched ad %s successfully", ad.id)
             return result
 

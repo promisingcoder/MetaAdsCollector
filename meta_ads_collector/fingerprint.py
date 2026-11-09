@@ -15,13 +15,17 @@ logger = logging.getLogger(__name__)
 # Chrome version pool (recent major versions)
 # ---------------------------------------------------------------------------
 # Each entry: (major_version, full_version)
+# Full versions are real Windows and macOS stable builds. The newest major
+# matches curl_cffi's newest Chrome impersonation target (chrome152 in
+# curl_cffi 0.17), so the User-Agent never claims a newer Chrome than the
+# TLS fingerprint.
 CHROME_VERSIONS: list[tuple[str, str]] = [
-    ("140", "140.0.7200.110"),
-    ("141", "141.0.7300.120"),
-    ("142", "142.0.7400.100"),
-    ("143", "143.0.7499.169"),
-    ("144", "144.0.7559.109"),
-    ("145", "145.0.7632.110"),
+    ("147", "147.0.7727.139"),
+    ("148", "148.0.7778.217"),
+    ("149", "149.0.7827.201"),
+    ("150", "150.0.7871.189"),
+    ("151", "151.0.7922.176"),
+    ("152", "152.0.7977.85"),
 ]
 
 # ---------------------------------------------------------------------------

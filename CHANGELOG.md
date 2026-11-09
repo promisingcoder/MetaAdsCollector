@@ -5,6 +5,19 @@ All notable changes to this project will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [1.7.1] - 2026-11-09
+
+### Fixed
+- `enrich_ad()` (also used by `--enrich` and the MCP server) now sets `page.verified` to `True` when the ad
+  details report a verified advertiser. A page built from a search row starts with `verified=False`, and the
+  merge kept that default, so enriched ads of verified advertisers showed `verified=False` next to
+  `verification="BLUE_VERIFIED"`.
+
+### Changed
+- The browser fingerprint's Chrome version pool is now 147-152 with real stable build numbers; the newest
+  matches curl_cffi's newest Chrome impersonation target, so the User-Agent never claims a newer Chrome than the
+  TLS fingerprint. The fallback `__rev` is the revision Meta served on 2026-11-09.
+
 ## [1.7.0] - 2026-10-22
 
 ### Added

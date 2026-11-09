@@ -3,8 +3,8 @@
 # ---------------------------------------------------------------------------
 # HTTP / browser fingerprint
 # ---------------------------------------------------------------------------
-CHROME_VERSION = "145"
-CHROME_FULL_VERSION = "145.0.7632.110"
+CHROME_VERSION = "152"
+CHROME_FULL_VERSION = "152.0.7977.85"
 USER_AGENT = (
     f"Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 "
     f"(KHTML, like Gecko) Chrome/{CHROME_VERSION}.0.0.0 Safari/537.36"
@@ -79,7 +79,7 @@ FALLBACK_CSR = (
     "E4a2W0C8eEcE4S2m12wg8O1fwau1IwiEow9qE5S3KUK320g-1fDw49w2v80PS07XU0ptw2Ao"
     "05Ey02zC0aFw0hIQ00BPo06XK6k00CSo072W09xw4jw"
 )
-FALLBACK_REV = "1033837939"
+FALLBACK_REV = "1053716622"
 
 # ---------------------------------------------------------------------------
 # Ad type constants

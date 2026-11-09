@@ -210,6 +210,22 @@ def test_enrich_ad_fills_detail_fields_and_preserves_original():
     collector.client.get_ad_details.assert_called_once_with(ad_archive_id=row["ad_archive_id"], page_id=row["page_id"])
 
 
+def test_enrich_ad_marks_a_verified_advertiser_page_as_verified():
+    """A sparse page's default ``verified=False`` must not hide a verified advertiser."""
+    collector = MetaAdsCollector.__new__(MetaAdsCollector)
+    collector.client = MagicMock()
+    collector.client.get_ad_details.return_value = _combined(POLITICAL_US_DETAILS)
+    row = POLITICAL_US_DETAILS["search_row"]
+    sparse = Ad(id=row["ad_archive_id"], page=PageInfo(id=row["page_id"], name=""))
+
+    enriched = collector.enrich_ad(sparse)
+
+    details = Ad.from_graphql_response(_combined(POLITICAL_US_DETAILS))
+    assert details.page is not None and details.page.verified is True
+    assert enriched.page == details.page
+    assert sparse.page.verified is False
+
+
 # ---------------------------------------------------------------------------
 # Client composition
 # ---------------------------------------------------------------------------
