@@ -4,7 +4,7 @@ build-backend = "setuptools.build_meta"
 
 [project]
 name = "meta-ads-collector"
-version = "1.7.1"
+version = "1.7.2"
 description = "Collect ads from the Meta (Facebook) Ad Library -- no API key required"
 readme = "README.md"
 license = "MIT"
@@ -42,7 +42,8 @@ classifiers = [
     "Typing :: Typed",
 ]
 dependencies = [
-    "curl_cffi>=0.13.0",
+    "curl_cffi>=0.17.0; python_version >= '3.10'",
+    "curl_cffi>=0.13.0; python_version < '3.10'",
 ]
 
 [project.optional-dependencies]

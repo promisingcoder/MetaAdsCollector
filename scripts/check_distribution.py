@@ -139,8 +139,10 @@ def main() -> None:
                 if packaged.replace(b"\r\n", b"\n") != source.read_bytes().replace(b"\r\n", b"\n"):
                     raise RuntimeError(f"Wheel does not match repository: {source.name}")
         version = metadata["Version"]
-        requirement = next(Requirement(value) for value in metadata.get_all("Requires-Dist", [])
-                           if Requirement(value).name.replace("_", "-") == "curl-cffi")
+        curl_requirements = [Requirement(value) for value in metadata.get_all("Requires-Dist", [])
+                             if Requirement(value).name.replace("_", "-") == "curl-cffi"]
+        # The environment below is created with this interpreter, so its markers decide which floor applies.
+        requirement = next(item for item in curl_requirements if item.marker is None or item.marker.evaluate())
         floor = next(spec.version for spec in requirement.specifier if spec.operator == ">=")
         environment = temporary / "env"
         venv.EnvBuilder(with_pip=True).create(environment)

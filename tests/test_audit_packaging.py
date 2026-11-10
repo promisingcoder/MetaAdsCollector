@@ -14,6 +14,10 @@ import pytest
 from packaging.requirements import Requirement
 
 
+def _floor(requirement):
+    return next(spec.version for spec in requirement.specifier if spec.operator == ">=")
+
+
 def test_documented_core_dependency_matches_the_installable_package():
     source = Path(__file__).resolve().parents[1] / "docs" / "contributing.md"
     if source.is_file():
@@ -23,9 +27,9 @@ def test_documented_core_dependency_matches_the_installable_package():
             member = next(item for item in archive.getmembers() if item.name.endswith("/docs/contributing.md"))
             documentation = archive.extractfile(member).read().decode("utf-8")
     dependencies = [Requirement(value) for value in requires("meta-ads-collector") or []]
-    curl_requirement = next(item for item in dependencies if item.name.replace("_", "-") == "curl-cffi")
-    floor = next(spec.version for spec in curl_requirement.specifier if spec.operator == ">=")
-    assert re.findall(r"curl_cffi>=([0-9.]+)", documentation) == [floor]
+    floors = [_floor(item) for item in dependencies if item.name.replace("_", "-") == "curl-cffi"]
+    assert floors, "No curl-cffi requirement declared"
+    assert sorted(re.findall(r"curl_cffi>=([0-9.]+)", documentation)) == sorted(floors)
 
 
 def test_published_package_imports_with_its_declared_minimum_dependency():
@@ -36,9 +40,16 @@ def test_published_package_imports_with_its_declared_minimum_dependency():
     The distribution CI job prepares this without using the checkout package.
     """
     dependencies = [Requirement(value) for value in requires("meta-ads-collector") or []]
-    curl_requirement = next(item for item in dependencies if item.name.replace("_", "-") == "curl-cffi")
-    assert "0.7.0" not in curl_requirement.specifier, "curl-cffi 0.7.0 cannot import RequestException"
-    floor = next(spec.version for spec in curl_requirement.specifier if spec.operator == ">=")
+    curl_requirements = [item for item in dependencies if item.name.replace("_", "-") == "curl-cffi"]
+    assert curl_requirements, "No curl-cffi requirement declared"
+    for item in curl_requirements:
+        assert "0.7.0" not in item.specifier, "curl-cffi 0.7.0 cannot import RequestException"
+    # The probed interpreter is the one scripts/check_distribution.py installs the pinned
+    # minimum into, and it is the interpreter running this suite there, so marker.evaluate()
+    # (which reads the running interpreter) selects the same requirement that was pinned.
+    applicable = [item for item in curl_requirements if item.marker is None or item.marker.evaluate()]
+    assert len(applicable) == 1, "Exactly one curl-cffi requirement must apply to this interpreter"
+    floor = _floor(applicable[0])
     interpreter = os.environ.get("METAADS_AUDIT_MIN_PYTHON")
     if not interpreter:
         pytest.skip("Exact-floor installation is checked by the distribution CI job")

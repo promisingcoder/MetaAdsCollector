@@ -5,6 +5,15 @@ All notable changes to this project will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [1.7.2] - 2026-11-10
+
+### Changed
+- On Python 3.10 and newer the library now requires curl_cffi 0.17.0 or newer, so the TLS fingerprint is never older
+  than the Chrome version in the User-Agent. Python 3.9 stays on curl_cffi 0.13.0, the last curl_cffi that supports it.
+
+### Fixed
+- The README intro: the PyPI/install line and the description were rendered as one paragraph.
+
 ## [1.7.1] - 2026-11-09
 
 ### Fixed

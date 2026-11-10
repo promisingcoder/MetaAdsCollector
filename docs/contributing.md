@@ -31,7 +31,7 @@ Async support is included in the package and does not require a separate optiona
 
 | Group | What it includes | When to install |
 |---|---|---|
-| (none) | `curl_cffi>=0.13.0` | Always (core dependency, provides Chrome TLS fingerprinting) |
+| (none) | `curl_cffi>=0.17.0` on Python 3.10+, `curl_cffi>=0.13.0` on Python 3.9 (the last curl_cffi that supports 3.9) | Always (core dependency, provides Chrome TLS fingerprinting) |
 | `dev` | `pytest`, `pytest-cov`, `pytest-asyncio`, `requests`, `PySocks`, `ruff`, `mypy`, `build`, `packaging`, `setuptools`, `twine` | For tests and development tools |
 
 ## Running Tests
